@@ -296,6 +296,12 @@ final class GameSession: RenderFrameSource {
         let steps = clock.advance(by: deltaTime)
         let t0 = CACurrentMediaTime()
         for _ in 0..<steps { tick() }
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "CBStoreScreen") == "action",
+           sim.match.phase == .live, sim.match.phaseTicks >= 50 {
+            paused = true
+        }
+        #endif
         if steps > 0 { lastSimMs = Float((CACurrentMediaTime() - t0) * 1000) / Float(steps) }
         #if DEBUG
         if let newCurves = tuning.poll() {

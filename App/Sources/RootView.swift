@@ -193,6 +193,28 @@ struct RootView: View {
             .onAppear {
                 guard !handledAutoStart else { return }
                 handledAutoStart = true
+                #if DEBUG
+                switch UserDefaults.standard.string(forKey: "CBStoreScreen") {
+                case "teams":
+                    screen = .teamSelect
+                    return
+                case "roster":
+                    screen = .manageTeams
+                    return
+                case "plays":
+                    session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
+                    session.paused = true
+                    screen = .game
+                    return
+                case "action":
+                    session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
+                    session.autopilot = true
+                    screen = .game
+                    return
+                default:
+                    break
+                }
+                #endif
                 if UserDefaults.standard.bool(forKey: "CBAutoStart") {
                     session.startGame(home: selectedTeam, away: opponentTeam, showIntro: false)
                     screen = .game

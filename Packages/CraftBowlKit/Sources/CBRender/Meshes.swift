@@ -92,7 +92,9 @@ enum Meshes {
         m.box(SIMD3(-0.5, 1.46, -0.27), SIMD3(0.5, 1.7, 0.27), material: .primary, bone: .chest)
         m.box(SIMD3(-0.51, 1.54, -0.275), SIMD3(-0.34, 1.6, 0.275), material: .secondary, bone: .chest)
         m.box(SIMD3(0.34, 1.54, -0.275), SIMD3(0.51, 1.6, 0.275), material: .secondary, bone: .chest)
-        m.box(SIMD3(-0.37, 1.24, -0.225), SIMD3(0.37, 1.3, 0.225), material: .secondary, bone: .chest)
+        // Leave the rear face open so the stripe does not cover the jersey number.
+        m.box(SIMD3(-0.37, 1.24, -0.225), SIMD3(0.37, 1.3, 0.225), material: .secondary, bone: .chest,
+              skip: [4])
         // head: neck, helmet, stripe, face, facemask
         m.box(SIMD3(-0.1, 1.66, -0.1), SIMD3(0.1, 1.76, 0.1), material: .skin, bone: .head)
         m.box(SIMD3(-0.24, 1.73, -0.25), SIMD3(0.24, 2.18, 0.24), material: .helmet, bone: .head)

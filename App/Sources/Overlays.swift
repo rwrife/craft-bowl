@@ -269,7 +269,7 @@ struct TouchControls: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .bottom) {
             if h.phase == .preSnap && !h.playCards.isEmpty {
-                PlayCardsView(session: session).padding(.bottom, 14)
+                PlayCardsView(session: session).padding(.bottom, 40)
             }
         }
     }
