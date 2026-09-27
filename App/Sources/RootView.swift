@@ -40,17 +40,23 @@ struct TeamDefinition: Identifiable, Hashable, Sendable {
 }
 
 enum TeamCatalog {
-    static let teams: [TeamDefinition] = [
-        make("austin", "Austin", "Armadillos", "AUS", 0x2457D6, 0xF5B82E, 11, specialNames: [.qb: "Ryan", .rb: "Hunter", .laneCenter: "Jaison"]),
-        make("brooklyn", "Brooklyn", "Bolts", "BRK", 0x121820, 0x22C8F2, 23),
-        make("miami", "Miami", "Waves", "MIA", 0x00A6A6, 0xFF6B35, 37),
-        make("chicago", "Chicago", "Foundry", "CHI", 0xA51C30, 0xD7DCE2, 41),
-        make("seattle", "Seattle", "Sasquatch", "SEA", 0x173F35, 0x9EDB4D, 59),
-        make("phoenix", "Phoenix", "Firebirds", "PHX", 0x7A1D5D, 0xFF9E1B, 71),
-        make("nashville", "Nashville", "Notes", "NSH", 0x3A1C71, 0xF4D35E, 83),
-        make("boston", "Boston", "Minutemen", "BOS", 0x16324F, 0xC73737, 97),
-        make("san-diego", "San Diego", "Surf", "SD", 0x176B87, 0xF2E8CF, 109),
-    ]
+    static let teams: [TeamDefinition] = {
+        let teams = [
+            make("austin", "Austin", "Armadillos", "AUS", 0x2457D6, 0xF5B82E, 11, 0,
+                 specialNames: [.qb: "Ryan", .rb: "Hunter", .laneCenter: "Jaison"]),
+            make("brooklyn", "Brooklyn", "Bolts", "BRK", 0x121820, 0x22C8F2, 23, 18),
+            make("miami", "Miami", "Waves", "MIA", 0x00A6A6, 0xFF6B35, 37, 36),
+            make("chicago", "Chicago", "Foundry", "CHI", 0xA51C30, 0xD7DCE2, 41, 54),
+            make("seattle", "Seattle", "Sasquatch", "SEA", 0x173F35, 0x9EDB4D, 59, 72),
+            make("phoenix", "Phoenix", "Firebirds", "PHX", 0x7A1D5D, 0xFF9E1B, 71, 90),
+            make("nashville", "Nashville", "Notes", "NSH", 0x3A1C71, 0xF4D35E, 83, 108),
+            make("boston", "Boston", "Minutemen", "BOS", 0x16324F, 0xC73737, 97, 126),
+            make("san-diego", "San Diego", "Surf", "SD", 0x176B87, 0xF2E8CF, 109, 144),
+        ]
+        let names = teams.flatMap(\.roster).map(\.name)
+        precondition(Set(names).count == names.count, "Team catalog player names must be unique")
+        return teams
+    }()
 
     private static let firstNames = [
         "Andre", "Beck", "Caleb", "Dante", "Eli", "Finn", "Gabe", "Isaiah", "Jett", "Kai", "Leo", "Malik",
@@ -62,14 +68,15 @@ enum TeamCatalog {
     ]
 
     private static func make(_ id: String, _ city: String, _ nickname: String, _ abbreviation: String,
-                             _ primary: UInt32, _ secondary: UInt32, _ seed: UInt64,
+                             _ primary: UInt32, _ secondary: UInt32, _ seed: UInt64, _ rosterOffset: Int,
                              specialNames: [Position: String] = [:]) -> TeamDefinition {
         var rng = CatalogRNG(seed: seed)
         let positions = Position.allCases
         let usedNumbers = positions.enumerated().map { index, _ in 1 + ((index * 11 + Int(seed)) % 98) }
         let roster = positions.enumerated().map { index, position in
-            let first = firstNames[rng.next(firstNames.count)]
-            let last = lastNames[rng.next(lastNames.count)]
+            let combination = ((rosterOffset + index) * 179 + 73) % (firstNames.count * lastNames.count)
+            let first = firstNames[combination / lastNames.count]
+            let last = lastNames[combination % lastNames.count]
             let name = specialNames[position].map { "\($0) \(last)" } ?? "\(first) \(last)"
             return PlayerProfile(
                 id: position,

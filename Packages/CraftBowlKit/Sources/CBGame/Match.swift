@@ -18,7 +18,7 @@ public struct Match: Sendable {
     public static let ticksPerSecond = Int(GameClock.ticksPerSecond)
     public static let autoSnapTicks = 60 * 10
     public static let deadBallTicks = 150
-    public static let quarterSeconds: Float = 300
+    public static let quarterSeconds: Float = 180
     public static let passSpeed: Float = 22
 
     public private(set) var world: World

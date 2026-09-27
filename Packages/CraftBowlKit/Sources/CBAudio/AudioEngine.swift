@@ -23,10 +23,13 @@ public final class AudioSystem {
         engine.attach(cheerPlayer)
     }
 
-    public func start() throws {
+    public func start() async throws {
         #if os(iOS)
-        try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
-        try AVAudioSession.sharedInstance().setActive(true)
+        try await Task.detached(priority: .userInitiated) {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.ambient, mode: .default)
+            try session.setActive(true)
+        }.value
         #endif
         try engine.start()
     }

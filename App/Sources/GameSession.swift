@@ -152,7 +152,6 @@ final class GameSession: RenderFrameSource {
             }
             try audio.loadCrowdLoop(from: crowdURL)
             try audio.loadCheers(from: cheerURLs)
-            try audio.start()
             func volume(_ key: String, fallback: Float) -> Float {
                 defaults.object(forKey: key) == nil ? fallback : defaults.float(forKey: key)
             }
@@ -161,6 +160,14 @@ final class GameSession: RenderFrameSource {
                 music: volume("CBMusicVolume", fallback: 0.7),
                 sfx: volume("CBSFXVolume", fallback: 0.9),
                 crowd: volume("CBCrowdVolume", fallback: 0.8))
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await audio.start()
+                } catch {
+                    audioError = error.localizedDescription
+                }
+            }
         } catch {
             audioError = error.localizedDescription
         }
