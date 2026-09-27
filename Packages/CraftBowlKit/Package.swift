@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "CBSim", targets: ["CBSim"]),
         .library(name: "CBPlays", targets: ["CBPlays"]),
         .library(name: "CBAI", targets: ["CBAI"]),
+        .library(name: "CBGame", targets: ["CBGame"]),
         .library(name: "CBAnimation", targets: ["CBAnimation"]),
         .library(name: "CBAssets", targets: ["CBAssets"]),
         .library(name: "CBInput", targets: ["CBInput"]),
@@ -29,12 +30,14 @@ let package = Package(
         .target(name: "CBPlays", dependencies: ["CBCore", "CBSim"],
                 resources: [.process("Resources")], swiftSettings: strict),
         .target(name: "CBAI", dependencies: ["CBCore", "CBSim", "CBPlays"], swiftSettings: strict),
+        // Rules + tick orchestration (sim + AI + plays). Headless-capable.
+        .target(name: "CBGame", dependencies: ["CBCore", "CBSim", "CBPlays", "CBAI"], swiftSettings: strict),
         .target(name: "CBAnimation", dependencies: ["CBCore"], swiftSettings: strict),
         .target(name: "CBAssets", dependencies: ["CBCore"], swiftSettings: strict),
 
         // Apple-platform modules (guarded with canImport so the package still resolves elsewhere)
-        .target(name: "CBInput", dependencies: ["CBCore"], swiftSettings: strict),
-        .target(name: "CBRender", dependencies: ["CBCore", "CBAssets", "CBSim"], swiftSettings: strict),
+        .target(name: "CBInput", dependencies: ["CBCore", "CBSim"], swiftSettings: strict),
+        .target(name: "CBRender", dependencies: ["CBCore", "CBAssets", "CBSim", "CBAnimation"], swiftSettings: strict),
         .target(name: "CBHUD", dependencies: ["CBCore", "CBSim"], swiftSettings: strict),
         .target(name: "CBAudio", dependencies: ["CBCore"], swiftSettings: strict),
     ]

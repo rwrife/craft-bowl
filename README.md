@@ -21,6 +21,41 @@ make open        # generates CraftBowl.xcodeproj from project.yml and opens it
 
 The `.xcodeproj` is generated and git-ignored. Edit `project.yml` instead.
 
+If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+
+### Command-line run (Simulator)
+
+```sh
+xcodegen generate
+xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/dd \
+  CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted build/dd/Build/Products/Debug-iphonesimulator/CraftBowl.app
+xcrun simctl launch booted com.rwrife.craftbowl -CBAutoStart YES -CBDevOverlay YES
+```
+
+Launch arguments (UserDefaults): `-CBAutoStart YES` skips the title screen, `-CBAutopilot YES` lets the CPU play offense, and `-CBDevOverlay YES` opens the dev overlay.
+
+The Simulator has no MetalFX, so upscaling falls back to a bilinear blit there. On the Simulator the GPU-family check is skipped; on devices an A14 or newer is required.
+
+## Playing (current sandbox)
+
+You play offense (blue) against CPU defense (red). A turnover, touchdown, or safety restarts the drive.
+
+| Action | Touch | Keyboard | Controller |
+|---|---|---|---|
+| Move | left stick | WASD / arrows | left stick / d-pad |
+| Pick play | ◀ ▶ | [ ] or 1–8 | d-pad left / right |
+| Snap | SNAP | Return (or any pass key) | any face button |
+| Pass L / C / R | lane buttons | J K L | X A B |
+| Handoff | HAND | H | Y |
+| Turbo | hold TURBO | hold Space | right trigger |
+| Dive | DIVE | U | right shoulder |
+| Pause | — | P / Esc | Menu |
+| Dev overlay | 3-finger tap | ` | Options, or L3+R3 |
+
+The dev overlay shows FPS, CPU/GPU pass timings, draw counts, the controlled-player inspector, and the input log. It has toggles for every render pass, camera presets, pause, ¼× speed, autopilot, and deterministic Record / Replay / Verify (replay confirms the world checksum). In Debug builds, edits to `ratings.json` hot-reload once per second.
+
 ## Layout
 
 ```
@@ -32,8 +67,10 @@ Packages/CraftBowlKit/    engine modules (Swift package)
   CBAI         player/coach brain protocols
   CBAnimation  rig bones + clip IDs for the single player model
   CBAssets     PlayerAppearance / TeamUniform (one model, many looks)
-  CBInput      GameAction stream, touch + Game Controller
-  CBRender     Metal renderer (bootstrap)
+  CBInput      GameAction stream: touch, hardware keyboard, Game Controller
+  CBGame       match rules (downs, clock, scoring), GameSimulation, record/replay
+  CBRender     Metal renderer: instanced players, GPU-culled crowd, shadows,
+               floodlights, bloom, tonemap + color-grade LUT, MetalFX upscaling
   CBHUD        HUD layout matching the reference
   CBAudio      audio buses
 docs/                     plan + reference art

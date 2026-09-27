@@ -3,22 +3,40 @@ on:
   push: { branches: [main] }
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode 26
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
-      - name: Install XcodeGen
-        run: brew install xcodegen
-      - name: Build CraftBowlKit (macOS host, platform-neutral modules)
+      - name: Select Xcode 26+
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_2*.app | sort -V | tail -1)"
+      - name: Install tools
+        run: brew install xcodegen swift-format
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: Packages/CraftBowlKit/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('Packages/CraftBowlKit/Package.swift', 'Packages/CraftBowlKit/Sources/**/*.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build CraftBowlKit (all modules, macOS host)
         working-directory: Packages/CraftBowlKit
-        run: swift build --target CBAI
+        run: swift build
+      - name: Compile shaders (-Werror)
+        run: |
+          for f in App/Shaders/*.metal; do
+            xcrun -sdk iphonesimulator metal -Werror -I App/Shaders -c "$f" -o "$RUNNER_TEMP/$(basename "$f").air"
+          done
+      - name: Lint (advisory)
+        continue-on-error: true
+        run: swift-format lint --recursive App Packages
       - name: Generate project
         run: xcodegen generate
       - name: Build app (iOS Simulator)
         run: |
           xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
             -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGNING_ALLOWED=NO build -quiet

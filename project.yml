@@ -26,7 +26,7 @@ targets:
       - App/Shaders
     dependencies:
       - package: CraftBowlKit
-        products: [CBCore, CBSim, CBPlays, CBAI, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
+        products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rwrife.craftbowl
