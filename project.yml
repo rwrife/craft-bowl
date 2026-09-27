@@ -1,0 +1,55 @@
+# XcodeGen spec — run `make project` (or `xcodegen generate`) to produce CraftBowl.xcodeproj.
+# The .xcodeproj is generated and git-ignored; edit this file instead.
+name: CraftBowl
+options:
+  bundleIdPrefix: com.rwrife
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""   # set your team ID locally
+packages:
+  CraftBowlKit:
+    path: Packages/CraftBowlKit
+targets:
+  CraftBowl:
+    type: application
+    platform: iOS
+    sources:
+      - App/Sources
+      - App/Shaders
+    dependencies:
+      - package: CraftBowlKit
+        products: [CBCore, CBSim, CBPlays, CBAI, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rwrife.craftbowl
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        INFOPLIST_KEY_UIStatusBarHidden: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_GCSupportsControllerUserInteraction: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Craft Bowl"
+    info:
+      path: App/Info.plist
+      properties:
+        CADisableMinimumFrameDurationOnPhone: true
+        UIRequiredDeviceCapabilities: [metal]
+        GCSupportedGameControllers:
+          - ProfileName: ExtendedGamepad
+schemes:
+  CraftBowl:
+    build:
+      targets:
+        CraftBowl: all
+    test:
+      targets: []

@@ -1,0 +1,15 @@
+{
+  "topSpeedMin": 6.5,
+  "topSpeedMax": 9.8,
+  "accelMin": 9,
+  "accelMax": 16,
+  "carryDrainMin": 0.11,
+  "carryDrainMax": 0.045,
+  "cutDrainMultiplier": 1.6,
+  "exhaustedSpeedFactor": 0.72,
+  "turboSpeedMultiplier": 1.22,
+  "turboCapacityMin": 1.4,
+  "turboCapacityMax": 2.6,
+  "turboRechargePerSecond": 0.35,
+  "turboRechargeDelay": 0.6
+}

@@ -1,0 +1,24 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build CraftBowlKit (macOS host, platform-neutral modules)
+        working-directory: Packages/CraftBowlKit
+        run: swift build --target CBAI
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build app (iOS Simulator)
+        run: |
+          xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build

@@ -1,0 +1,20 @@
+[
+  { "id": "zone3", "name": "Zone 3",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "rush", "mlb": "zone:center", "olb": "zone:right",
+                     "cbL": "zone:left", "cbR": "zone:right", "fs": "deepZone:center", "ss": "zone:left" } },
+  { "id": "man", "name": "Man",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "rush", "mlb": "man:backfield", "olb": "man:center",
+                     "cbL": "man:left", "cbR": "man:right", "fs": "deepZone:center", "ss": "deepZone:left" } },
+  { "id": "mlb_blitz", "name": "MLB Blitz",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "rush", "mlb": "rush", "olb": "man:center",
+                     "cbL": "man:left", "cbR": "man:right", "fs": "deepZone:center", "ss": "man:backfield" } },
+  { "id": "run_stuff", "name": "Run Stuff",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "rush", "mlb": "runFill", "olb": "runFill",
+                     "cbL": "zone:left", "cbR": "zone:right", "fs": "deepZone:center", "ss": "runFill" } },
+  { "id": "qb_spy", "name": "QB Spy",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "rush", "mlb": "spy", "olb": "zone:center",
+                     "cbL": "zone:left", "cbR": "zone:right", "fs": "deepZone:center", "ss": "zone:right" } },
+  { "id": "prevent", "name": "Prevent",
+    "assignments": { "deL": "rush", "nt": "rush", "deR": "zone:right", "mlb": "deepZone:center", "olb": "zone:left",
+                     "cbL": "deepZone:left", "cbR": "deepZone:right", "fs": "deepZone:center", "ss": "zone:center" } }
+]

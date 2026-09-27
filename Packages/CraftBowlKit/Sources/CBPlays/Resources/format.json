@@ -1,0 +1,5 @@
+{
+  "playersPerSide": 9,
+  "offense": ["qb", "rb", "laneLeft", "laneCenter", "laneRight", "lt", "lg", "rg", "rt"],
+  "defense": ["deL", "nt", "deR", "mlb", "olb", "cbL", "cbR", "fs", "ss"]
+}
