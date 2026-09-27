@@ -42,7 +42,7 @@ struct TitleView: View {
             LinearGradient(colors: [.black.opacity(0.65), .clear, .black.opacity(0.55)], startPoint: .top,
                            endPoint: .bottom)
             VStack(spacing: 18) {
-                Text("CRAFT BOWL")
+                Text("BLOCK BOWL")
                     .font(.system(size: 72, weight: .black, design: .monospaced))
                     .foregroundStyle(.yellow)
                     .shadow(color: .black, radius: 0, x: 5, y: 5)
@@ -71,8 +71,8 @@ struct TitleView: View {
 struct UnsupportedDeviceView: View {
     var body: some View {
         VStack(spacing: 12) {
-            Text("CRAFT BOWL").font(.system(size: 40, weight: .black, design: .monospaced))
-            Text("This device's GPU isn't supported. Craft Bowl needs an A14 Bionic chip or newer.")
+            Text("BLOCK BOWL").font(.system(size: 40, weight: .black, design: .monospaced))
+            Text("This device's GPU isn't supported. Block Bowl needs an A14 Bionic chip or newer.")
                 .multilineTextAlignment(.center)
         }
         .padding()

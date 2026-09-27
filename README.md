@@ -1,4 +1,4 @@
-# Craft Bowl
+# Block Bowl
 
 A modern-retro, blocky American football game for iOS. It looks like a blocky dungeon crawler and plays like simplified Tecmo Bowl: 9-on-9, a 3+1 lane play system, and stamina/turbo running.
 
@@ -31,7 +31,7 @@ xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/dd \
   CODE_SIGNING_ALLOWED=NO build
 xcrun simctl install booted build/dd/Build/Products/Debug-iphonesimulator/CraftBowl.app
-xcrun simctl launch booted com.rwrife.craftbowl -CBAutoStart YES -CBDevOverlay YES
+xcrun simctl launch booted com.infinityball.craft-bowl -CBAutoStart YES -CBDevOverlay YES
 ```
 
 Launch arguments (UserDefaults): `-CBAutoStart YES` skips the title screen, `-CBAutopilot YES` lets the CPU play offense, and `-CBDevOverlay YES` opens the dev overlay.

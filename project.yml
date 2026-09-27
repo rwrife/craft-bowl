@@ -2,7 +2,7 @@
 # The .xcodeproj is generated and git-ignored; edit this file instead.
 name: CraftBowl
 options:
-  bundleIdPrefix: com.rwrife
+  bundleIdPrefix: com.infinityball
   deploymentTarget:
     iOS: "26.0"
   xcodeVersion: "26.0"
@@ -29,7 +29,7 @@ targets:
         products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.rwrife.craftbowl
+        PRODUCT_BUNDLE_IDENTIFIER: com.infinityball.craft-bowl
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIRequiresFullScreen: YES
@@ -38,7 +38,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_GCSupportsControllerUserInteraction: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "Craft Bowl"
+        INFOPLIST_KEY_CFBundleDisplayName: "Block Bowl"
     info:
       path: App/Info.plist
       properties:
