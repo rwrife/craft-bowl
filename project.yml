@@ -24,6 +24,8 @@ targets:
     sources:
       - App/Sources
       - App/Shaders
+      - path: App/Assets.xcassets
+        buildPhase: resources
     dependencies:
       - package: CraftBowlKit
         products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
