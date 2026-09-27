@@ -58,20 +58,12 @@ struct HUDView: View {
                     .padding(.top, 28)
             }
             Spacer()
-            if h.phase == .preSnap {
-                VStack(spacing: 4) {
-                    Text("◀  \(h.playName)  ▶").font(.pixel(18)).foregroundStyle(.white)
-                    Text("vs \(h.defenseName)").font(.pixel(10)).foregroundStyle(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(panel)
-                .padding(.bottom, 24)
-            } else if h.phase == .live {
+            if h.phase == .live {
                 HStack(spacing: 6) {
                     Text("TURBO").font(.pixel(10)).foregroundStyle(.yellow)
                     MeterBar(value: h.turbo, color: .yellow)
-                    Text("STAMINA").font(.pixel(10)).foregroundStyle(.green)
-                    MeterBar(value: h.energy, color: .green)
+                    Text("HEALTH").font(.pixel(10)).foregroundStyle(.green)
+                    MeterBar(value: h.health, color: .green)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .background(panel)
@@ -96,6 +88,142 @@ private struct MeterBar: View {
     }
 }
 
+private extension Color {
+    init(_ v: SIMD3<Float>) { self.init(red: Double(v.x), green: Double(v.y), blue: Double(v.z)) }
+}
+
+/// Pre-snap play selection: the 3 plays dealt this down as chalkboard X's-and-O's cards.
+struct PlayCardsView: View {
+    let session: GameSession
+
+    var body: some View {
+        let h = session.hud
+        VStack(spacing: 6) {
+            StatLegend()
+            HStack(spacing: 10) {
+                ForEach(Array(h.playCards.enumerated()), id: \.offset) { i, card in
+                    PlayCard(diagram: card, slot: i, selected: h.chosenCard == i,
+                             dimmed: h.chosenCard != nil && h.chosenCard != i)
+                        .onTapGesture { session.input.send(.playSelect(i), from: .touch) }
+                }
+            }
+        }
+    }
+}
+
+/// Explains the stacked bar drawn over key players: each color is a rating, shrinking as health drains.
+private struct StatLegend: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            item("SPD", StatBar.speedColor)
+            item("END", StatBar.enduranceColor)
+            item("ABL", StatBar.abilityColor)
+            Text("× HEALTH").font(.pixel(9)).foregroundStyle(.white.opacity(0.75))
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(panel)
+    }
+
+    private func item(_ label: String, _ c: SIMD3<Float>) -> some View {
+        HStack(spacing: 3) {
+            Rectangle().fill(Color(c)).frame(width: 10, height: 6).overlay(Rectangle().stroke(.black, lineWidth: 1))
+            Text(label).font(.pixel(9)).foregroundStyle(.white)
+        }
+    }
+}
+
+private struct PlayCard: View {
+    let diagram: PlayDiagram
+    let slot: Int
+    let selected: Bool
+    let dimmed: Bool
+
+    private static let chalk = Color(red: 0.06, green: 0.17, blue: 0.11)
+    private static let keys = ["1", "2", "3"]
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Canvas { ctx, size in draw(&ctx, size) }
+                .frame(width: 124, height: 60)
+                .background(PlayCard.chalk)
+                .overlay(alignment: .topLeading) {
+                    Text(PlayCard.keys[min(slot, 2)]).font(.pixel(9)).foregroundStyle(.black)
+                        .frame(width: 13, height: 13).background(.yellow.opacity(0.9)).padding(3)
+                }
+            Text(diagram.name.uppercased()).font(.pixel(10)).foregroundStyle(.white).lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(diagram.kindLabel).font(.pixel(8)).foregroundStyle(.white.opacity(0.65))
+        }
+        .frame(width: 124)
+        .padding(4)
+        .background(panel)
+        .overlay(Rectangle().stroke(selected ? .yellow : .white.opacity(0.35), lineWidth: selected ? 3 : 1))
+        .scaleEffect(selected ? 1.06 : 1)
+        .opacity(dimmed ? 0.6 : 1)
+        .animation(.easeOut(duration: 0.12), value: selected)
+        .contentShape(Rectangle())
+    }
+
+    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize) {
+        func pt(_ v: Vec2) -> CGPoint {
+            CGPoint(x: CGFloat((v.x - PlayDiagram.minX) / (PlayDiagram.maxX - PlayDiagram.minX)) * size.width,
+                    y: size.height - CGFloat((v.y - PlayDiagram.minY) / (PlayDiagram.maxY - PlayDiagram.minY)) * size.height)
+        }
+        let losY = pt(Vec2(0, 0)).y
+        var los = Path()
+        los.move(to: CGPoint(x: 0, y: losY))
+        los.addLine(to: CGPoint(x: size.width, y: losY))
+        ctx.stroke(los, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+        let yellow = Color(red: 1, green: 0.85, blue: 0.2)
+        for stroke in diagram.strokes where stroke.points.count > 1 {
+            var path = Path()
+            path.move(to: pt(stroke.points[0]))
+            for p in stroke.points.dropFirst() { path.addLine(to: pt(p)) }
+            let end = pt(stroke.points[stroke.points.count - 1])
+            let prev = pt(stroke.points[stroke.points.count - 2])
+            let angle = atan2(end.y - prev.y, end.x - prev.x)
+            switch stroke.style {
+            case .route, .run:
+                let w: CGFloat = stroke.style == .run ? 2.4 : 1.5
+                let c = stroke.style == .run ? Color(red: 1, green: 0.55, blue: 0.2) : yellow
+                ctx.stroke(path, with: .color(c), style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
+                var head = Path()
+                let len: CGFloat = 5
+                head.move(to: end)
+                head.addLine(to: CGPoint(x: end.x - len * cos(angle - 0.5), y: end.y - len * sin(angle - 0.5)))
+                head.addLine(to: CGPoint(x: end.x - len * cos(angle + 0.5), y: end.y - len * sin(angle + 0.5)))
+                head.closeSubpath()
+                ctx.fill(head, with: .color(c))
+            case .pitch:
+                ctx.stroke(path, with: .color(.white.opacity(0.8)), style: StrokeStyle(lineWidth: 1.2, dash: [2, 2]))
+            case .block:
+                ctx.stroke(path, with: .color(.white.opacity(0.8)), lineWidth: 1.2)
+                var t = Path()
+                let n = CGPoint(x: -sin(angle) * 3, y: cos(angle) * 3)
+                t.move(to: CGPoint(x: end.x - n.x, y: end.y - n.y))
+                t.addLine(to: CGPoint(x: end.x + n.x, y: end.y + n.y))
+                ctx.stroke(t, with: .color(.white.opacity(0.8)), lineWidth: 1.6)
+            }
+        }
+        let r: CGFloat = 3.2
+        for o in diagram.offense {
+            let c = pt(o)
+            ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
+                       with: .color(Color(red: 0.55, green: 0.75, blue: 1)), lineWidth: 1.5)
+        }
+        let q = pt(diagram.qb)
+        ctx.fill(Path(ellipseIn: CGRect(x: q.x - r, y: q.y - r, width: r * 2, height: r * 2)), with: .color(yellow))
+        for d in diagram.defense {
+            let c = pt(d)
+            var x = Path()
+            x.move(to: CGPoint(x: c.x - r, y: c.y - r)); x.addLine(to: CGPoint(x: c.x + r, y: c.y + r))
+            x.move(to: CGPoint(x: c.x + r, y: c.y - r)); x.addLine(to: CGPoint(x: c.x - r, y: c.y + r))
+            ctx.stroke(x, with: .color(Color(red: 1, green: 0.35, blue: 0.3)), lineWidth: 1.5)
+        }
+    }
+}
+
 /// On-screen controls: virtual stick (left) and a context-sensitive action cluster (right).
 struct TouchControls: View {
     let session: GameSession
@@ -111,11 +239,9 @@ struct TouchControls: View {
             VStack(alignment: .trailing, spacing: 10) {
                 switch h.phase {
                 case .preSnap:
-                    HStack(spacing: 10) {
-                        ActionButton(label: "◀", color: .gray) { send(.previousPlay) }
-                        ActionButton(label: "▶", color: .gray) { send(.nextPlay) }
+                    if h.chosenCard != nil {
+                        ActionButton(label: "SNAP", color: homeBlue, size: 84) { send(.snap) }
                     }
-                    ActionButton(label: "SNAP", color: homeBlue, size: 84) { send(.snap) }
                 case .live:
                     if !h.qbActions.isEmpty {
                         HStack(spacing: 10) {
@@ -137,6 +263,11 @@ struct TouchControls: View {
         }
         .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .overlay(alignment: .bottom) {
+            if h.phase == .preSnap && !h.playCards.isEmpty {
+                PlayCardsView(session: session).padding(.bottom, 14)
+            }
+        }
     }
 
     private func label(_ a: QBAction) -> String {

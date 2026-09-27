@@ -23,7 +23,7 @@ public struct Camera: Sendable {
         /// Offset of the eye from the focus point, in field space (x across, y downfield) plus height.
         public var offset: (across: Float, back: Float, height: Float, fov: Float, lookAhead: Float) {
             switch self {
-            case .reference: (0, 17, 11.5, 0.78, 9)
+            case .reference: (0, 15, 9, 0.8, 16)
             case .broadcast: (0, 24, 16, 0.6, 7)
             case .low: (0, 9, 3.2, 0.9, 10)
             case .overhead: (0, 6, 42, 0.8, 4)
@@ -76,6 +76,27 @@ public struct DebugLine: Sendable {
 }
 
 /// Everything the renderer needs for one frame. Filled by the game each frame (no allocation once warmed).
+/// Stacked stat bar floating over a player's head. Drawn in screen space after post-processing, so its
+/// colors are exact and it is never hidden behind other players.
+public struct StatBar: Sendable {
+    /// World-space point just above the helmet; the bar sits centered above it.
+    public var anchor: SIMD3<Float>
+    /// Segment fills, left to right (speed, endurance, ability), each 0...1 of a third of the bar.
+    public var segments: SIMD3<Float>
+    /// 0...1; low health tints the frame red.
+    public var health: Float
+    public init(anchor: SIMD3<Float>, segments: SIMD3<Float>, health: Float) {
+        self.anchor = anchor
+        self.segments = segments
+        self.health = health
+    }
+
+    /// Segment colors (sRGB), shared with the HUD legend.
+    public static let speedColor = SIMD3<Float>(0.25, 0.8, 1.0)
+    public static let enduranceColor = SIMD3<Float>(0.4, 0.92, 0.3)
+    public static let abilityColor = SIMD3<Float>(1.0, 0.7, 0.15)
+}
+
 public struct RenderFrame: Sendable {
     public var camera = Camera(eye: SIMD3(0, 12, -18), target: SIMD3(0, 0, -44))
     public var players: [PlayerDraw] = []
@@ -93,6 +114,7 @@ public struct RenderFrame: Sendable {
     public var markers: [DebugLine] = []
     /// Drawn only when `RenderSettings.debugDraw` is on.
     public var debugLines: [DebugLine] = []
+    public var statBars: [StatBar] = []
 
     public init() {}
 }
@@ -111,10 +133,10 @@ public struct RenderSettings: Sendable {
     /// Used when dynamic resolution is off.
     public var fixedScale: Float = 0.85
     public var exposure: Float = 1.0
-    public var vignette: Float = 0.35
+    public var vignette: Float = 0.6
     public var chromaticAberration: Float = 0
     /// Crowd LOD cutoff in yards (0 = unlimited).
-    public var crowdDistance: Float = 150
+    public var crowdDistance: Float = 260
     public var targetFrameMs: Float = 1000 / 60
 
     public init() {}

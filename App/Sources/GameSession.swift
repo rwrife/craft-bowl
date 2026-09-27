@@ -24,7 +24,10 @@ struct HUDState: Equatable {
     var qbActions: [QBAction] = []
     var runner = false
     var turbo: Float = 1
-    var energy: Float = 1
+    var health: Float = 1
+    /// The 3 plays offered this down and which one (if any) is picked.
+    var playCards: [PlayDiagram] = []
+    var chosenCard: Int?
 }
 
 /// Dev overlay numbers, refreshed ~4×/s.
@@ -237,7 +240,7 @@ final class GameSession: RenderFrameSource {
         let m = sim.match
         switch m.phase {
         case .preSnap:
-            if m.phaseTicks == 40 { t.playSelect = Int8(autoRNG.nextUInt32() % UInt32(max(1, playbook.offense.count))) }
+            if m.phaseTicks == 40 { t.playSelect = Int8(autoRNG.nextUInt32() % UInt32(max(1, m.playChoices.count))) }
             if m.phaseTicks == 110 {
                 t.buttons.insert(.snap)
                 autoThrowTick = 30 + Int(autoRNG.nextUInt32() % 30)
@@ -338,6 +341,7 @@ final class GameSession: RenderFrameSource {
 
         updateCamera(&frame.camera, dt: realDt)
         buildMarkers(&frame.markers)
+        buildStatBars(&frame.statBars)
         frame.debugLines.removeAll(keepingCapacity: true)
         if settings.debugDraw { buildDebug(&frame.debugLines) }
     }
@@ -346,7 +350,8 @@ final class GameSession: RenderFrameSource {
         let m = sim.match
         var desired: Vec2
         switch m.phase {
-        case .preSnap: desired = Vec2(0, m.lineOfScrimmage - 3)
+        // Pre-snap the camera sits further back so the formation (and its stat bars) clears the play cards.
+        case .preSnap: desired = Vec2(0, m.lineOfScrimmage - 11)
         case .live, .dead: desired = Vec2(interp.ball.x * 0.7, interp.ball.y)
         }
         desired.x = clamp(desired.x, -12, 12)
@@ -387,6 +392,18 @@ final class GameSession: RenderFrameSource {
             let s: Float = 0.3
             let pts = [top + SIMD3(0, s * 1.4, 0), top + SIMD3(s, 0, 0), top - SIMD3(0, s * 1.4, 0), top - SIMD3(s, 0, 0)]
             for k in 0..<4 { lines.append(DebugLine(pts[k], pts[(k + 1) % 4], color)) }
+        }
+    }
+
+    /// Speed / endurance / ability bars over the play's key players before the snap, then over the runner only.
+    /// Each segment is that rating scaled by current health, so a tiring player's bar visibly shrinks.
+    private func buildStatBars(_ bars: inout [StatBar]) {
+        bars.removeAll(keepingCapacity: true)
+        for id in sim.match.statBarPlayers {
+            guard let p = interp.players.first(where: { $0.id == id }), !p.isDown else { continue }
+            let r = p.ratings
+            let seg = SIMD3(Float(r.speed), Float(r.endurance), Float(r.ability)) / 99 * p.health
+            bars.append(StatBar(anchor: fieldToWorld(p.location, height: 2.45), segments: seg, health: p.health))
         }
     }
 
@@ -442,10 +459,14 @@ final class GameSession: RenderFrameSource {
         h.defenseName = m.defensePlay.name.uppercased()
         h.qbActions = m.availableQBActions
         h.runner = m.phase == .live && h.qbActions.isEmpty
+        if m.phase == .preSnap {
+            h.playCards = m.playChoiceDiagrams
+            h.chosenCard = m.chosenChoice
+        }
         if let c = m.controlled {
             let p = m.world[c]
             h.turbo = (p.stamina.turboFraction * 20).rounded() / 20
-            h.energy = (p.stamina.energy * 20).rounded() / 20
+            h.health = (p.stamina.health * 20).rounded() / 20
         }
         if h != hud { hud = h }
     }
@@ -475,9 +496,9 @@ final class GameSession: RenderFrameSource {
         if let c = m.controlled {
             let p = m.world[c]
             d.inspector = [
-                "#\(p.number) \(p.position.rawValue.uppercased())  P\(p.ratings.power) S\(p.ratings.speed) E\(p.ratings.endurance)",
+                "#\(p.number) \(p.position.rawValue.uppercased())  P\(p.ratings.power) S\(p.ratings.speed) E\(p.ratings.endurance) A\(p.ratings.ability)",
                 String(format: "pos %.1f, %.1f  spd %.2f", p.location.x, p.location.y, p.velocity.length),
-                String(format: "energy %.2f  turbo %.2f%@", p.stamina.energy, p.stamina.turboFraction,
+                String(format: "health %.2f  turbo %.2f%@", p.stamina.health, p.stamina.turboFraction,
                        p.stamina.isTurboActive ? " ON" : ""),
             ]
         }

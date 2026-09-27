@@ -147,33 +147,91 @@ enum Meshes {
         var lamps: [SIMD3<Float>] = []
 
         // Turf covers everything inside the stands.
-        m.box(SIMD3(-60, -0.1, -150), SIMD3(60, 0, 25), material: .turf, skip: [0, 1, 3, 4, 5])
+        m.box(SIMD3(-72, -0.1, -160), SIMD3(72, 0, 25), material: .turf, skip: [0, 1, 3, 4, 5])
 
-        let concrete = SIMD3<Float>(0.24, 0.25, 0.3)
-        let rows = 18
-        let rowDepth: Float = 0.9, rowRise: Float = 0.55, standStart: Float = 30.5
-        let seatSpacing: Float = 0.55
-        // side stands (along the field, z = -(-4)...-(124))
-        for side in [-1, 1] as [Float] {
-            for r in 0..<rows {
-                let x0 = standStart + Float(r) * rowDepth, x1 = x0 + rowDepth
-                let top = 0.9 + Float(r) * rowRise
-                let shade: Float = r % 2 == 0 ? 1 : 0.86
-                let lo = side > 0 ? SIMD3(x0, 0, -124) : SIMD3(-x1, 0, -124)
-                let hi = side > 0 ? SIMD3(x1, top, 4) : SIMD3(-x0, top, 4)
-                m.box(lo, hi, color: concrete * shade, material: .plain, groundAO: 0.7)
-                var z: Float = 3
-                while z > -123 {
-                    let x = side * (x0 + rowDepth * 0.45)
-                    seats.append((SIMD3(x, top, z), side > 0 ? .pi / 2 : -.pi / 2, Int(side)))
-                    z -= seatSpacing
+        let concrete = SIMD3<Float>(0.15, 0.16, 0.2)
+        let fascia = SIMD3<Float>(0.05, 0.06, 0.09)
+        let rowDepth: Float = 0.9, standStart: Float = 30.5
+        // Two-tier bowl: steep upper decks behind the lower bowl so the crowd towers over the field.
+        let lowerRows = 18, lowerRise: Float = 0.55
+        let upperRows = 22, upperRise: Float = 0.8
+        let lowerOuter = standStart + Float(lowerRows) * rowDepth            // 46.7
+        let lowerTop = 0.9 + Float(lowerRows - 1) * lowerRise                  // 10.25
+        let upperStart = lowerOuter + 0.6, upperBase = lowerTop + 2.1
+        let upperOuter = upperStart + Float(upperRows) * rowDepth             // 67.1
+        let upperTop = upperBase + 0.9 + Float(upperRows - 1) * upperRise
+        let farStart: Float = 125, farLowerRows = 16
+        let farLowerOuter = farStart + Float(farLowerRows) * rowDepth
+        let farLowerTop = 0.9 + Float(farLowerRows - 1) * lowerRise
+        let farUpperStart = farLowerOuter + 0.6, farUpperBase = farLowerTop + 2.1
+        let farUpperRows = 18
+        let farUpperOuter = farUpperStart + Float(farUpperRows) * rowDepth
+        let ribbon: [SIMD3<Float>] = [SIMD3(0.1, 0.25, 0.8), SIMD3(0.9, 0.62, 0.1), SIMD3(0.75, 0.1, 0.1)]
+
+        /// A bank of stadium lights facing the field; `inward` is the unit axis pointing at the field.
+        func lightBank(_ c: SIMD3<Float>, inward: SIMD3<Float>) {
+            let across = SIMD3<Float>(abs(inward.z), 0, abs(inward.x))
+            let thick = SIMD3<Float>(abs(inward.x), 0, abs(inward.z))
+            m.box(c - SIMD3(0, c.y - 1, 0) - thick * 0.4 - across * 0.4, c - SIMD3(0, 2.2, 0) + thick * 0.4 + across * 0.4,
+                  color: SIMD3(0.1, 0.1, 0.12), material: .plain)
+            m.box(c - across * 4.4 - SIMD3(0, 2.3, 0) - thick * 0.5, c + across * 4.4 + SIMD3(0, 2.3, 0) + thick * 0.5,
+                  color: SIMD3(0.08, 0.08, 0.1), material: .plain)
+            for ly in 0..<2 {
+                for lx in 0..<5 {
+                    let p = c + inward * 0.55 + across * (Float(lx) - 2) * 1.7 + SIMD3(0, Float(ly) * 2 - 1, 0)
+                    m.box(p - across * 0.7 - SIMD3(0, 0.75, 0) - thick * 0.1,
+                          p + across * 0.7 + SIMD3(0, 0.75, 0) + thick * 0.1,
+                          color: SIMD3(1, 0.96, 0.86), material: .emissive)
+                    lamps.append(p + inward * 0.25)
                 }
             }
+            floodlights.append(c + inward * 3 - SIMD3(0, 1, 0))
+        }
+
+        for side in [-1, 1] as [Float] {
+            func xs(_ a: Float, _ b: Float) -> (Float, Float) { side > 0 ? (a, b) : (-b, -a) }
+            // lower bowl
+            for r in 0..<lowerRows {
+                let x0 = standStart + Float(r) * rowDepth
+                let top = 0.9 + Float(r) * lowerRise
+                let (lx, hx) = xs(x0, x0 + rowDepth)
+                m.box(SIMD3(lx, 0, -124), SIMD3(hx, top, 4), color: concrete * (r % 2 == 0 ? 1 : 0.86),
+                      material: .plain, groundAO: 0.7)
+                var z: Float = 3
+                while z > -123 {
+                    seats.append((SIMD3(side * (x0 + rowDepth * 0.45), top, z), side > 0 ? .pi / 2 : -.pi / 2, Int(side)))
+                    z -= 0.55
+                }
+            }
+            // club-level fascia with an LED ribbon board between the tiers
+            let (fx0, fx1) = xs(lowerOuter, upperStart)
+            m.box(SIMD3(fx0, 0, -140), SIMD3(fx1, upperBase, 4), color: fascia, material: .plain)
+            for i in 0..<18 {
+                let z1 = -Float(i) * 8 + 4, z0 = z1 - 7.6
+                let ax = side * (lowerOuter - 0.03)
+                m.box(SIMD3(min(ax, ax + side * 0.02), lowerTop + 0.9, z0), SIMD3(max(ax, ax + side * 0.02), upperBase - 0.35, z1),
+                      color: ribbon[i % ribbon.count] * 0.22, material: .emissive)
+            }
+            // upper deck (runs past the far corner to meet the far upper deck)
+            for r in 0..<upperRows {
+                let x0 = upperStart + Float(r) * rowDepth
+                let top = upperBase + 0.9 + Float(r) * upperRise
+                let (lx, hx) = xs(x0, x0 + rowDepth)
+                m.box(SIMD3(lx, upperBase - 1, -farUpperStart), SIMD3(hx, top, 4),
+                      color: concrete * (r % 2 == 0 ? 0.9 : 0.78), material: .plain)
+                var z: Float = 3
+                while z > -farUpperStart + 0.5 {
+                    seats.append((SIMD3(side * (x0 + rowDepth * 0.45), top, z), side > 0 ? .pi / 2 : -.pi / 2, Int(side)))
+                    z -= 0.62
+                }
+            }
+            let (bx0, bx1) = xs(upperOuter, upperOuter + 1)
+            m.box(SIMD3(bx0, 0, -farUpperOuter - 1), SIMD3(bx1, upperTop + 2.5, 4), color: fascia, material: .plain)
+
             // sideline wall + ad boards
             let wx0: Float = 28.6, wx1: Float = 29.3
-            let wlo = side > 0 ? SIMD3(wx0, 0, -124) : SIMD3(-wx1, 0, -124)
-            let whi = side > 0 ? SIMD3(wx1, 1.2, 4) : SIMD3(-wx0, 1.2, 4)
-            m.box(wlo, whi, color: SIMD3(0.08, 0.09, 0.14), material: .plain, groundAO: 0.6)
+            let (wl, wh) = xs(wx0, wx1)
+            m.box(SIMD3(wl, 0, -124), SIMD3(wh, 1.2, 4), color: SIMD3(0.08, 0.09, 0.14), material: .plain, groundAO: 0.6)
             let adColors: [SIMD3<Float>] = [SIMD3(0.9, 0.62, 0.1), SIMD3(0.12, 0.3, 0.8), SIMD3(0.75, 0.12, 0.12),
                                             SIMD3(0.85, 0.85, 0.85), SIMD3(0.1, 0.55, 0.3)]
             for i in 0..<16 {
@@ -183,36 +241,47 @@ enum Meshes {
                 let hi = SIMD3(side > 0 ? ax : ax + 0.02, 1.0, z1)
                 m.box(lo, hi, color: adColors[i % adColors.count] * 0.25, material: .emissive)
             }
-            // floodlight towers behind the stands
-            for fz in [-8, -60, -112] as [Float] {
-                let x = side * 50
-                m.box(SIMD3(x - 0.5, 0, fz - 0.5), SIMD3(x + 0.5, 34, fz + 0.5), color: SIMD3(0.18, 0.19, 0.22),
-                      material: .plain)
-                let head = SIMD3<Float>(x - side * 0.6, 35.5, fz)
-                m.box(SIMD3(head.x - 0.5, head.y - 2.2, fz - 4.2), SIMD3(head.x + 0.5, head.y + 2.2, fz + 4.2),
-                      color: SIMD3(0.12, 0.12, 0.14), material: .plain)
-                for ly in 0..<3 {
-                    for lz in 0..<5 {
-                        let p = SIMD3(head.x - side * 0.55, head.y - 1.4 + Float(ly) * 1.4, fz - 3.2 + Float(lz) * 1.6)
-                        m.box(p - SIMD3(0.12, 0.5, 0.6), p + SIMD3(0.12, 0.5, 0.6), color: SIMD3(1, 0.95, 0.82),
-                              material: .emissive)
-                        lamps.append(p - SIMD3(side * 0.2, 0, 0))
-                    }
-                }
-                floodlights.append(head - SIMD3(side * 3, 1, 0))
+            // light banks along the rim of the upper deck
+            for fz in [2, -28, -60, -92, -124] as [Float] {
+                lightBank(SIMD3(side * (upperOuter + 0.5), upperTop + 6.5, fz), inward: SIMD3(-side, 0, 0))
             }
         }
-        // far end-zone stand (behind z = -122)
-        for r in 0..<14 {
-            let z0 = -125 - Float(r) * rowDepth, z1 = z0 - rowDepth
-            let top = 0.9 + Float(r) * rowRise
-            m.box(SIMD3(-30, 0, z1), SIMD3(30, top, z0), color: concrete * (r % 2 == 0 ? 1 : 0.86), material: .plain,
-                  groundAO: 0.7)
-            var x: Float = -29.4
-            while x < 29.4 {
+
+        // far end-zone bowl (behind z = -122)
+        for r in 0..<farLowerRows {
+            let z0 = -farStart - Float(r) * rowDepth, z1 = z0 - rowDepth
+            let top = 0.9 + Float(r) * lowerRise
+            m.box(SIMD3(-lowerOuter, 0, z1), SIMD3(lowerOuter, top, z0), color: concrete * (r % 2 == 0 ? 1 : 0.86),
+                  material: .plain, groundAO: 0.7)
+            var x: Float = -lowerOuter + 0.4
+            while x < lowerOuter - 0.4 {
                 seats.append((SIMD3(x, top, z0 - rowDepth * 0.45), .pi, 0))
-                x += seatSpacing
+                x += 0.55
             }
+        }
+        m.box(SIMD3(-upperStart, 0, -farUpperStart), SIMD3(upperStart, farUpperBase, -farLowerOuter), color: fascia,
+              material: .plain)
+        for i in 0..<12 {
+            let x0 = -46 + Float(i) * 7.7
+            m.box(SIMD3(x0, farLowerTop + 0.9, -farLowerOuter + 0.01), SIMD3(x0 + 7.3, farUpperBase - 0.35, -farLowerOuter + 0.03),
+                  color: ribbon[i % ribbon.count] * 0.22, material: .emissive)
+        }
+        for r in 0..<farUpperRows {
+            let z0 = -farUpperStart - Float(r) * rowDepth, z1 = z0 - rowDepth
+            let top = farUpperBase + 0.9 + Float(r) * upperRise
+            m.box(SIMD3(-upperOuter, farUpperBase - 1, z1), SIMD3(upperOuter, top, z0),
+                  color: concrete * (r % 2 == 0 ? 0.9 : 0.78), material: .plain)
+            var x: Float = -upperOuter + 0.4
+            while x < upperOuter - 0.4 {
+                seats.append((SIMD3(x, top, z0 - rowDepth * 0.45), .pi, 0))
+                x += 0.62
+            }
+        }
+        let farTop = farUpperBase + 0.9 + Float(farUpperRows - 1) * upperRise
+        m.box(SIMD3(-upperOuter - 1, 0, -farUpperOuter - 1), SIMD3(upperOuter + 1, farTop + 2.5, -farUpperOuter),
+              color: fascia, material: .plain)
+        for fx in [-40, 0, 40] as [Float] {
+            lightBank(SIMD3(fx, farTop + 6.5, -farUpperOuter - 0.5), inward: SIMD3(0, 0, 1))
         }
         m.box(SIMD3(-30, 0, -124.4), SIMD3(30, 1.2, -123.7), color: SIMD3(0.08, 0.09, 0.14), material: .plain)
 

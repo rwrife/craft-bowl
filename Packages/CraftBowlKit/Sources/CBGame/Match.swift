@@ -16,7 +16,7 @@ public enum PlayOutcome: String, Sendable, Equatable {
 /// formation → snap → QB phase → runner phase → whistle → spot & downs.
 public struct Match: Sendable {
     public static let ticksPerSecond = Int(GameClock.ticksPerSecond)
-    public static let autoSnapTicks = 60 * 6
+    public static let autoSnapTicks = 60 * 10
     public static let deadBallTicks = 150
     public static let quarterSeconds: Float = 300
     public static let passSpeed: Float = 22
@@ -41,6 +41,11 @@ public struct Match: Sendable {
     public private(set) var message = "SELECT PLAY"
     public private(set) var lastOutcome: PlayOutcome?
     public private(set) var playNumber = 0
+    /// Offense play-book indices offered this down (3 random, distinct). The user must pick one before the snap.
+    public private(set) var playChoices: [Int] = []
+    /// Which of `playChoices` is picked, or nil until the user chooses.
+    public private(set) var chosenChoice: Int?
+    public static let choicesPerDown = 3
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -56,6 +61,31 @@ public struct Match: Sendable {
               world[c].location.y < lineOfScrimmage
         else { return [] }
         return offensePlay.qbActions
+    }
+
+    /// Players the play is built around (pass targets, the runner, the QB on a keeper). They wear down while it's live.
+    public func keyPlayers(for play: OffensivePlay) -> [EntityID] {
+        var ids: [EntityID] = []
+        for lane in Lane.allCases where play.slots[lane]?.role == .target {
+            if let p = world.player(at: lane.slotPosition) { ids.append(p.id) }
+        }
+        if play.kind == .keeper, let qb = world.player(at: .qb) { ids.append(qb.id) }
+        return ids
+    }
+
+    /// Who gets a stat bar overhead right now: the key players while picking a play (every skill player until a
+    /// card is chosen), then only a runner (after a catch/handoff or a QB scramble) once the ball is snapped.
+    public var statBarPlayers: [EntityID] {
+        switch phase {
+        case .preSnap:
+            if chosenChoice != nil { return keyPlayers(for: offensePlay) }
+            return [Position.laneLeft, .laneCenter, .laneRight, .rb].compactMap { world.player(at: $0)?.id }
+        case .live:
+            guard runnerPhase, let c = world.ballCarrier, world[c].side == .offense else { return [] }
+            return [c]
+        case .dead:
+            return []
+        }
     }
 
     public var playContext: PlayContext {
@@ -92,13 +122,44 @@ public struct Match: Sendable {
     }
 
     private mutating func stepPreSnap(_ input: TickInput) {
-        let count = playbook.offense.count
-        if input.buttons.contains(.nextPlay) { offenseIndex = (offenseIndex + 1) % count }
-        if input.buttons.contains(.previousPlay) { offenseIndex = (offenseIndex + count - 1) % count }
-        if input.playSelect >= 0 && Int(input.playSelect) < count { offenseIndex = Int(input.playSelect) }
         world.step(intents: [:])
+        let n = playChoices.count
+        guard n > 0 else { snap(); return }
+        // Before a pick, the lane buttons (J/K/L, X/A/B) choose a card; after it, any action button snaps.
+        let wasChosen = chosenChoice != nil
+        if input.playSelect >= 0 && Int(input.playSelect) < n { choose(Int(input.playSelect)) }
+        if !wasChosen {
+            if input.buttons.contains(.passLeft) { choose(0) }
+            else if input.buttons.contains(.passCenter) { choose(min(1, n - 1)) }
+            else if input.buttons.contains(.passRight) { choose(min(2, n - 1)) }
+        }
+        if input.buttons.contains(.nextPlay) { choose(((chosenChoice ?? -1) + 1) % n) }
+        if input.buttons.contains(.previousPlay) { choose(((chosenChoice ?? 0) + n - 1) % n) }
+
         let snapButtons: TickInput.Buttons = [.snap, .passLeft, .passCenter, .passRight, .handoff]
-        if !input.buttons.isDisjoint(with: snapButtons) || phaseTicks >= Match.autoSnapTicks { snap() }
+        let wantsSnap = input.buttons.contains(.snap) || (wasChosen && !input.buttons.isDisjoint(with: snapButtons))
+        if chosenChoice != nil && wantsSnap {
+            snap()
+        } else if phaseTicks >= Match.autoSnapTicks {
+            // Play clock ran out: stuck with a random card.
+            if chosenChoice == nil { choose(Int(world.rng.nextUInt32() % UInt32(n))) }
+            snap()
+        }
+    }
+
+    private mutating func choose(_ i: Int) {
+        chosenChoice = i
+        offenseIndex = playChoices[i]
+    }
+
+    private mutating func dealPlayChoices() {
+        var pool = Array(playbook.offense.indices)
+        var picks: [Int] = []
+        while picks.count < Match.choicesPerDown && !pool.isEmpty {
+            picks.append(pool.remove(at: Int(world.rng.nextUInt32() % UInt32(pool.count))))
+        }
+        playChoices = picks
+        chosenChoice = nil
     }
 
     private mutating func snap() {
@@ -120,10 +181,22 @@ public struct Match: Sendable {
             intents[c] = PlayerIntent(move: input.move, turbo: input.turbo, dive: input.buttons.contains(.dive))
         }
         handleQBButtons(input.buttons)
+        updateExertion()
         world.step(intents: intents)
         for event in world.events { handle(event) }
         guard phase == .live else { return }
         checkCarrier()
+    }
+
+    /// Key players and the ball carrier (once they're running with it) drain health; everyone else recovers.
+    private mutating func updateExertion() {
+        let key = keyPlayers(for: offensePlay)
+        let carrier = world.ballCarrier
+        for i in world.players.indices {
+            let p = world.players[i]
+            let carrying = p.id == carrier && (runnerPhase || p.position != .qb)
+            world.players[i].isExerting = key.contains(p.id) || carrying
+        }
     }
 
     private mutating func handleQBButtons(_ buttons: TickInput.Buttons) {
@@ -149,10 +222,12 @@ public struct Match: Sendable {
             aim = r.location + r.velocity * t
         }
         let pressured = world.players.contains { $0.side == .defense && !$0.isDown && $0.location.distance(to: qb.location) < 2.5 }
-        if pressured {
-            aim += Vec2(world.rng.unitFloat() * 3 - 1.5, world.rng.unitFloat() * 3 - 1.5)
-        }
+        // Accuracy: a tired or low-ability QB sprays the ball, more so on long throws and under pressure.
+        let spread = (1 - qb.ability(world.curves)) * (0.6 + qb.location.distance(to: aim) * 0.06)
+            + (pressured ? 1.5 : 0)
+        aim += Vec2(world.rng.unitFloat() * 2 - 1, world.rng.unitFloat() * 2 - 1) * spread
         aim.x = clamp(aim.x, -Field.halfWidth + 0.5, Field.halfWidth - 0.5)
+        aim.y = clamp(aim.y, Field.wallMinY + 0.5, Field.wallMaxY - 0.5)
         let dist = qb.location.distance(to: aim)
         world.throwBall(to: aim, target: r.id, speed: Match.passSpeed, peak: 0.6 + dist * 0.07)
         // AI runs the receiver to the ball; the user takes over on the catch.
@@ -180,7 +255,7 @@ public struct Match: Sendable {
             .min { $0.location.distance(to: spot) < $1.location.distance(to: spot) }
         let receiverDist = target.map { world[$0].location.distance(to: spot) } ?? .infinity
         if let d = defender, d.location.distance(to: spot) < 1.2, d.location.distance(to: spot) < receiverDist {
-            if world.rng.unitFloat() < 0.3 {
+            if world.rng.unitFloat() < 0.12 + 0.3 * d.ability(world.curves) {
                 world.ball = .held(by: d.id)
                 endPlay(.interception, at: d.location)
             } else {
@@ -188,7 +263,18 @@ public struct Match: Sendable {
             }
             return
         }
-        if let target, receiverDist < 1.8, !world[target].isDown {
+        if let target, !world[target].isDown {
+            // Ability (after fatigue) widens the catch radius and makes the hands surer; a nearby defender hurts.
+            let r = world[target]
+            let ability = r.ability(world.curves)
+            let reach: Float = (r.isDiving ? 0.6 : 0) + 1.2 + 0.9 * ability
+            guard receiverDist < reach else { endPlay(.incomplete, at: spot); return }
+            let contested = defender.map { $0.location.distance(to: spot) < 2.2 } ?? false
+            let chance = clamp(0.62 + 0.38 * ability - (contested ? 0.18 : 0) - receiverDist * 0.08, 0.25, 0.98)
+            guard world.rng.unitFloat() < chance else {
+                endPlay(.incomplete, at: spot, text: "DROPPED!")
+                return
+            }
             world.ball = .held(by: target)
             controlled = target
             runnerPhase = true
@@ -212,7 +298,7 @@ public struct Match: Sendable {
             guard d.side == .defense, !d.isDown, d.recoverTicks == 0 else { continue }
             let reach: Float = d.isDiving ? 1.5 : 0.95
             guard d.location.distance(to: c.location) < reach else { continue }
-            let chance = clamp(0.72 + 0.35 * (d.ratings.p - c.ratings.p) - 0.25 * c.ratings.s * c.stamina.energy
+            let chance = clamp(0.72 + 0.35 * (d.ratings.p - c.ratings.p) - 0.25 * c.ratings.s * c.health
                                + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
             if world.rng.unitFloat() < chance {
                 let sack = c.position == .qb && c.location.y < lineOfScrimmage
@@ -231,6 +317,7 @@ public struct Match: Sendable {
     private mutating func endPlay(_ outcome: PlayOutcome, at spot: Vec2, text: String? = nil) {
         lastOutcome = outcome
         phase = .dead
+        for i in world.players.indices { world.players[i].isExerting = false }
         phaseTicks = 0
         if let c = world.ballCarrier { world[c].isDown = outcome != .touchdown && outcome != .outOfBounds }
         world.ball = .dead(at: spot)
@@ -297,17 +384,19 @@ public struct Match: Sendable {
         for i in world.players.indices {
             var p = world.players[i]
             let o = Match.formationOffset(p.position)
-            p.location = Vec2(o.x, lineOfScrimmage + o.y)
+            p.location = Field.clampToWalls(Vec2(o.x, lineOfScrimmage + o.y), radius: World.playerRadius)
             p.velocity = .zero
             p.facing = p.side == .offense ? 0 : .pi
             p.isDown = false
             p.diveTicks = 0
             p.recoverTicks = 0
             p.engagedTicks = 0
-            p.stamina.recover()
+            p.isExerting = false
+            p.stamina.resetTurbo()
             world.players[i] = p
         }
         world.ball = .dead(at: Vec2(0, lineOfScrimmage))
+        dealPlayChoices()
         if message.isEmpty || message == "CATCH!" { message = "SELECT PLAY" }
     }
 
@@ -360,18 +449,21 @@ public struct Match: Sendable {
     }
 
     static func ratings(for p: Position, rng: inout PCG32) -> Ratings {
-        let base: (Int, Int, Int) = switch p {
-        case .qb: (55, 68, 65)
-        case .rb: (72, 84, 70)
-        case .laneLeft, .laneCenter, .laneRight: (50, 88, 66)
-        case .lt, .lg, .rg, .rt: (90, 42, 75)
-        case .deL, .nt, .deR: (86, 52, 70)
-        case .mlb: (78, 72, 75)
-        case .olb: (70, 78, 70)
-        case .cbL, .cbR: (50, 88, 70)
-        case .fs, .ss: (62, 82, 70)
+        // (power, speed, endurance, ability)
+        let base: (Int, Int, Int, Int) = switch p {
+        case .qb: (55, 68, 65, 80)
+        case .rb: (72, 84, 70, 62)
+        case .laneLeft: (48, 92, 58, 72)
+        case .laneCenter: (58, 80, 78, 84)
+        case .laneRight: (50, 86, 68, 66)
+        case .lt, .lg, .rg, .rt: (90, 42, 75, 30)
+        case .deL, .nt, .deR: (86, 52, 70, 40)
+        case .mlb: (78, 72, 75, 55)
+        case .olb: (70, 78, 70, 55)
+        case .cbL, .cbR: (50, 88, 70, 62)
+        case .fs, .ss: (62, 82, 70, 66)
         }
         func vary(_ v: Int) -> Int { v + Int(rng.nextUInt32() % 13) - 6 }
-        return Ratings(power: vary(base.0), speed: vary(base.1), endurance: vary(base.2))
+        return Ratings(power: vary(base.0), speed: vary(base.1), endurance: vary(base.2), ability: vary(base.3))
     }
 }

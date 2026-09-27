@@ -16,4 +16,16 @@ public enum Field {
     public static func isOutOfBounds(_ p: Vec2) -> Bool {
         abs(p.x) > halfWidth || p.y < 0 || p.y > length
     }
+
+    /// Invisible walls: players may step just past the sidelines (so out-of-bounds still triggers)
+    /// but can never leave through the end lines or reach the stands.
+    public static let wallHalfWidth: Float = halfWidth + 1.5
+    public static let wallMinY: Float = 0
+    public static let wallMaxY: Float = length
+
+    /// Clamps a point so a circle of `radius` stays inside the invisible walls.
+    public static func clampToWalls(_ p: Vec2, radius: Float = 0) -> Vec2 {
+        Vec2(clamp(p.x, -wallHalfWidth + radius, wallHalfWidth - radius),
+             clamp(p.y, wallMinY + radius, wallMaxY - radius))
+    }
 }

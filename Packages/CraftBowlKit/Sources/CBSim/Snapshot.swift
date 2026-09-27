@@ -14,8 +14,9 @@ public struct WorldSnapshot: Sendable {
         public var isDown: Bool
         public var isDiving: Bool
         public var turboActive: Bool
-        public var energy: Float
+        public var health: Float
         public var turboFraction: Float
+        public var ratings: Ratings
     }
 
     public var tick: UInt64 = 0
@@ -34,8 +35,8 @@ public struct WorldSnapshot: Sendable {
         for p in world.players {
             players.append(Player(id: p.id, position: p.position, number: p.number, location: p.location,
                                   velocity: p.velocity, facing: p.facing, isDown: p.isDown, isDiving: p.isDiving,
-                                  turboActive: p.stamina.isTurboActive, energy: p.stamina.energy,
-                                  turboFraction: p.stamina.turboFraction))
+                                  turboActive: p.stamina.isTurboActive, health: p.stamina.health,
+                                  turboFraction: p.stamina.turboFraction, ratings: p.ratings))
         }
         ballCarrier = world.ballCarrier
         ballInAir = world.ballFlight != nil

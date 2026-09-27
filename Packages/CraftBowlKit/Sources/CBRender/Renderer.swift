@@ -32,6 +32,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
     static let maxPlayers = 32
     static let maxGlows = 160
     static let maxDebugVertices = 24_000
+    static let maxOverlayVertices = 2048
     static let maxLights = 16
     static let shadowSize = 2048
     static let bloomLevels = 5
@@ -46,7 +47,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
 
     // Pipelines
     private let scenePSO, shadowPSO, skyPSO, glowPSO, debugPSO: MTLRenderPipelineState
-    private let prefilterPSO, downPSO, upPSO, compositePSO, blitPSO: MTLRenderPipelineState
+    private let prefilterPSO, downPSO, upPSO, compositePSO, blitPSO, overlayPSO: MTLRenderPipelineState
     private let cullPSO: MTLComputePipelineState
     private let depthWrite, depthSky, depthRead: MTLDepthStencilState
 
@@ -65,7 +66,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
 
     // Per-frame arena
     private struct Layout {
-        var uniforms = 0, lights = 0, teams = 0, cull = 0, cullCrowd = 0, args = 0, instances = 0, bones = 0, glows = 0, debug = 0
+        var uniforms = 0, lights = 0, teams = 0, cull = 0, cullCrowd = 0, args = 0, instances = 0, bones = 0, glows = 0, debug = 0, overlay = 0
         var size = 0
     }
     private let layout: Layout
@@ -166,6 +167,8 @@ public final class Renderer: NSObject, MTKViewDelegate {
             upPSO = try render("BloomUp", "post_vertex", "bloom_up", color: hdrFormat, additive: true)
             compositePSO = try render("Composite", "post_vertex", "composite", color: .rgba8Unorm)
             blitPSO = try render("FinalBlit", "post_vertex", "final_blit", color: view.colorPixelFormat)
+            overlayPSO = try render("Overlay", "overlay_vertex", "debug_fragment", color: view.colorPixelFormat,
+                                    alpha: true)
             guard let cullFn = library.makeFunction(name: "cull_instances") else { return nil }
             cullPSO = try device.makeComputePipelineState(function: cullFn)
         } catch {
@@ -240,11 +243,11 @@ public final class Renderer: NSObject, MTKViewDelegate {
         crowdInstances = crowdBuf
 
         for p in stadiumData.lamps {
-            glowTemplate.append(GPUGlow(positionSize: SIMD4(p, 1.3), color: SIMD4(3.2, 3.0, 2.6, 0)))
+            glowTemplate.append(GPUGlow(positionSize: SIMD4(p, 2.2), color: SIMD4(3.6, 3.4, 3.0, 0)))
         }
         for p in stadiumData.floodlights {
-            glowTemplate.append(GPUGlow(positionSize: SIMD4(p + SIMD3(0, 1, 0), 10), color: SIMD4(0.55, 0.5, 0.42, 0)))
-            floodLights.append(GPUPointLight(positionRadius: SIMD4(p, 120), colorIntensity: SIMD4(1, 0.95, 0.85, 0.55)))
+            glowTemplate.append(GPUGlow(positionSize: SIMD4(p + SIMD3(0, 1, 0), 18), color: SIMD4(0.5, 0.48, 0.42, 0)))
+            floodLights.append(GPUPointLight(positionRadius: SIMD4(p, 180), colorIntensity: SIMD4(0.92, 0.95, 1.0, 0.7)))
         }
 
         // Arena layout (256-byte aligned sub-allocations).
@@ -266,6 +269,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
         l.bones = take(MemoryLayout<simd_float4x4>.stride * Rig.boneCount * Renderer.maxPlayers)
         l.glows = take(MemoryLayout<GPUGlow>.stride * Renderer.maxGlows)
         l.debug = take(MemoryLayout<GPUDebugVertex>.stride * Renderer.maxDebugVertices)
+        l.overlay = take(MemoryLayout<GPUDebugVertex>.stride * Renderer.maxOverlayVertices)
         l.size = cursor
         layout = l
 
@@ -423,6 +427,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
         let fu = writeFrameData(base: base, aspect: Float(W) / Float(H), renderSize: SIMD2(Float(rw), Float(rh)),
                                 full: SIMD2(Float(W), Float(H)), playerCount: playerCount, glowCount: glowCount)
         let debugCount = writeDebug(base: base, eye: frame.camera.eye)
+        let overlayCount = writeStatBars(base: base, viewProj: fu.viewProj, size: SIMD2(Float(W), Float(H)))
 
         // Pass 1: GPU culling + shadow map
         cmd0.label = "Cull+Shadow"
@@ -560,6 +565,20 @@ public final class Renderer: NSObject, MTKViewDelegate {
             var bu = PostUniforms(source: SIMD4(finalUV.x, finalUV.y, 0, 0))
             drawCalls += fullscreen(cmd2, target: drawable.texture, pso: blitPSO, label: "Final",
                                     viewport: SIMD2(W, H), textures: [finalSource], uniforms: &bu)
+            if overlayCount > 0 {
+                let p = MTLRenderPassDescriptor()
+                p.colorAttachments[0].texture = drawable.texture
+                p.colorAttachments[0].loadAction = .load
+                p.colorAttachments[0].storeAction = .store
+                if let e = cmd2.makeRenderCommandEncoder(descriptor: p) {
+                    e.label = "Stat Bars"
+                    e.setRenderPipelineState(overlayPSO)
+                    e.setVertexBuffer(arena, offset: layout.overlay, index: 0)
+                    e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: overlayCount)
+                    e.endEncoding()
+                    drawCalls += 1
+                }
+            }
             cmd2.present(drawable)
         }
         cmd2.addCompletedHandler(Renderer.timingHandler(timings, pass: 2, signal: inFlight))
@@ -706,12 +725,13 @@ public final class Renderer: NSObject, MTKViewDelegate {
         fu.cameraPos = SIMD4(cam.eye, time)
         fu.cameraRight = SIMD4(right, 0)
         fu.cameraUp = SIMD4(up, 0)
-        fu.lightDir = SIMD4(lightDir, 1.35)
-        fu.lightColor = SIMD4(1.0, 0.96, 0.9, 0.55)
-        fu.skyTop = SIMD4(0.004, 0.007, 0.022, 1.0)
-        fu.skyHorizon = SIMD4(0.045, 0.055, 0.1, 0.0022)
-        fu.ambient = SIMD4(0.12, 0.14, 0.22, 0.35)
-        fu.groundAmbient = SIMD4(0.05, 0.075, 0.045, 0)
+        fu.lightDir = SIMD4(lightDir, 1.15)
+        // Night game: a cool floodlight key over the field, faint navy ambient, dark navy fog.
+        fu.lightColor = SIMD4(0.96, 0.97, 1.0, 0.6)
+        fu.skyTop = SIMD4(0.002, 0.004, 0.016, 1.0)
+        fu.skyHorizon = SIMD4(0.02, 0.03, 0.075, 0.0045)
+        fu.ambient = SIMD4(0.07, 0.085, 0.16, 0.35)
+        fu.groundAmbient = SIMD4(0.03, 0.045, 0.03, 0)
         fu.params = SIMD4(frame.crowdExcitement, renderSize.x / full.x, Float(lightCount), Float(bitPattern: flags))
         fu.field = SIMD4(frame.lineOfScrimmage, frame.firstDownLine, frame.showLines ? 1 : 0, 0)
         fu.viewport = SIMD4(renderSize.x, renderSize.y, 1 / full.x, 1 / full.y)
@@ -772,6 +792,49 @@ public final class Renderer: NSObject, MTKViewDelegate {
         let glows = (base + layout.glows).bindMemory(to: GPUGlow.self, capacity: Renderer.maxGlows)
         for i in 0..<glowCount { glows[i] = glowTemplate[i] }
         return fu
+    }
+
+    /// Screen-space stat bars (NDC quads), pixel-snapped so the chunky frame stays crisp.
+    private func writeStatBars(base: UnsafeMutableRawPointer, viewProj: simd_float4x4, size: SIMD2<Float>) -> Int {
+        let out = (base + layout.overlay).bindMemory(to: GPUDebugVertex.self, capacity: Renderer.maxOverlayVertices)
+        var n = 0
+        func quad(_ x0: Float, _ y0: Float, _ x1: Float, _ y1: Float, _ c: SIMD4<Float>) {
+            guard n + 6 <= Renderer.maxOverlayVertices, x1 > x0, y1 > y0 else { return }
+            let a = SIMD2(x0 / size.x * 2 - 1, 1 - y0 / size.y * 2), b = SIMD2(x1 / size.x * 2 - 1, 1 - y1 / size.y * 2)
+            for p in [SIMD2(a.x, a.y), SIMD2(b.x, a.y), SIMD2(b.x, b.y), SIMD2(a.x, a.y), SIMD2(b.x, b.y), SIMD2(a.x, b.y)] {
+                out[n] = GPUDebugVertex(position: SIMD4(p.x, p.y, 0, 1), color: c)
+                n += 1
+            }
+        }
+        let unit = max(1, (size.y / 360).rounded())            // ~1 pt
+        let w = (unit * 30).rounded(), h = unit * 5, border = unit
+        let colors = [StatBar.speedColor, StatBar.enduranceColor, StatBar.abilityColor]
+        for bar in frame.statBars {
+            let clip = viewProj * SIMD4(bar.anchor, 1)
+            guard clip.w > 0.1 else { continue }
+            let ndc = SIMD2(clip.x, clip.y) / clip.w
+            let cx = ((ndc.x * 0.5 + 0.5) * size.x).rounded(), bottom = ((0.5 - ndc.y * 0.5) * size.y).rounded()
+            let x0 = cx - (w / 2).rounded(), y1 = bottom, y0 = y1 - h
+            let low = bar.health < 0.35
+            let frameColor: SIMD4<Float> = low ? SIMD4(0.95, 0.2, 0.15, 1) : SIMD4(0.02, 0.03, 0.06, 0.95)
+            quad(x0 - border * 2, y0 - border * 2, x0 + w + border * 2, y1 + border * 2, frameColor)
+            quad(x0 - border, y0 - border, x0 + w + border, y1 + border, SIMD4(0.85, 0.88, 0.95, 0.9))
+            quad(x0, y0, x0 + w, y1, SIMD4(0.08, 0.09, 0.14, 1))
+            var x = x0
+            let third = w / 3
+            for i in 0..<3 {
+                let len = (third * clamp(bar.segments[i], 0, 1)).rounded()
+                quad(x, y0, x + len, y1, SIMD4(colors[i], 1))
+                quad(x, y0, x + len, y0 + unit, SIMD4(colors[i] * 0.5 + 0.5, 1))   // top highlight
+                x += len
+            }
+            // faint notches at each third so the empty (fatigued) portion reads as lost stats
+            for i in 1..<3 {
+                let nx = (x0 + third * Float(i)).rounded()
+                if nx > x { quad(nx, y0, nx + unit, y1, SIMD4(0.3, 0.32, 0.4, 1)) }
+            }
+        }
+        return n
     }
 
     /// Expands lines into camera-facing ribbons (hardware lines are 1px on Retina).

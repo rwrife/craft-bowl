@@ -140,15 +140,24 @@ public struct SandboxBrain: PlayerBrain {
     }
 
     private func routePoint(lane: Lane, route: RouteKind, start: PlayerState, los: Float, ticks: Int) -> Vec2 {
-        let t = Float(ticks) / 60
+        let wps = SandboxBrain.routeWaypoints(lane: lane, route: route)
+        guard let last = wps.last else { return start.location }
+        // Two-leg routes (mid) run the stem for 1.4 s, then break.
+        let wp = wps.count > 1 && Float(ticks) / 60 < 1.4 ? wps[0] : last
+        return Vec2(wp.x, los + wp.y)
+    }
+
+    /// Route shape as waypoints relative to the line of scrimmage (x = field x, y = yards past the LOS).
+    /// Shared by the AI and the play-card diagrams so they always match.
+    public static func routeWaypoints(lane: Lane, route: RouteKind) -> [Vec2] {
         let x = lane == .center ? Float(4) : lane.centerX
         switch route {
-        case .deep: return Vec2(x * 0.9, los + 32)
-        case .mid: return t < 1.4 ? Vec2(x, los + 10) : Vec2(x * 0.45, los + 15)
-        case .short: return Vec2(x, los + 5.5)
-        case .flat: return Vec2(lane == .backfield ? 14 : x * 1.2, los + 1.5)
-        case .screen: return Vec2(x * 0.8, los - 2.5)
-        case .handoff, .toss, .none: return start.location
+        case .deep: return [Vec2(x * 0.9, 32)]
+        case .mid: return [Vec2(x, 10), Vec2(x * 0.45, 15)]
+        case .short: return [Vec2(x, 5.5)]
+        case .flat: return [Vec2(lane == .backfield ? 14 : x * 1.2, 1.5)]
+        case .screen: return [Vec2(x * 0.8, -2.5)]
+        case .handoff, .toss, .none: return []
         }
     }
 

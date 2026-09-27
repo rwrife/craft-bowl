@@ -25,9 +25,14 @@ public struct PlayerState: Sendable {
     public var recoverTicks = 0
     /// > 0 while in contact with an opponent (blocking / being blocked) — slows the player.
     public var engagedTicks = 0
+    /// Part of the current play (key receiver/runner, ball carrier): health drains instead of regenerating.
+    /// Set by the rules layer each live tick.
+    public var isExerting = false
 
     public var side: Side { position.side }
     public var isDiving: Bool { diveTicks > 0 }
+    public var health: Float { stamina.health }
+    public func ability(_ curves: RatingCurves) -> Float { stamina.ability(ratings: ratings, curves: curves) }
 
     public init(id: EntityID, position: Position, ratings: Ratings, number: Int, location: Vec2,
                 curves: RatingCurves = .default) {
@@ -155,9 +160,11 @@ public struct World: Sendable {
         var p = self[id]
         guard !p.isDown, !p.isDiving, p.recoverTicks == 0 else { return }
         let dir = Vec2(sin(p.facing), cos(p.facing))
-        let speed = max(p.velocity.length, 4) + 2.5
+        // Ability (after fatigue) sets how far and long the lunge carries.
+        let ability = p.ability(curves)
+        let speed = max(p.velocity.length, 4) * lerp(0.8, 1, p.health) + 1.5 + 2 * ability
         p.velocity = dir * speed
-        p.diveTicks = 21
+        p.diveTicks = 16 + Int(10 * ability)
         self[id] = p
     }
 
@@ -173,13 +180,29 @@ public struct World: Sendable {
             stepPlayer(i, intent: intent, carrying: players[i].id == carrier, dt: dt)
         }
         resolveCollisions()
+        applyWalls()
         stepBall(dt: dt)
         tick &+= 1
+    }
+
+    /// Keeps every player inside the invisible walls, killing velocity into the wall so they slide along it.
+    private mutating func applyWalls() {
+        for i in players.indices {
+            let p = players[i].location
+            let c = Field.clampToWalls(p, radius: World.playerRadius)
+            guard c != p else { continue }
+            players[i].location = c
+            if c.x != p.x { players[i].velocity.x = 0 }
+            if c.y != p.y { players[i].velocity.y = 0 }
+        }
     }
 
     private mutating func stepPlayer(_ i: Int, intent: PlayerIntent, carrying: Bool, dt: Float) {
         var p = players[i]
         defer { players[i] = p }
+        if p.isDown || p.isDiving {
+            p.stamina.stepHealth(dt: dt, ratings: p.ratings, curves: curves, exerting: p.isExerting)
+        }
         if p.isDown {
             p.velocity = .zero
             if p.recoverTicks > 0 {
@@ -213,13 +236,13 @@ public struct World: Sendable {
         let desired = intent.move.length > 1 ? intent.move.normalized : intent.move
         let before = p.velocity.normalized
         let cutting = before != .zero && desired != .zero && (before * desired).sum() < 0.5
-        p.stamina.step(dt: dt, ratings: p.ratings, curves: curves, carrying: carrying, cutting: cutting,
-                       wantsTurbo: intent.turbo && !recovering)
+        p.stamina.step(dt: dt, ratings: p.ratings, curves: curves, exerting: p.isExerting, carrying: carrying,
+                       cutting: cutting && p.velocity.length > 2, wantsTurbo: intent.turbo && !recovering)
         var vmax = p.stamina.maxSpeed(ratings: p.ratings, curves: curves)
         if p.engagedTicks > 0 { vmax *= carrying ? 0.7 : 0.45 }
         if recovering { vmax *= 0.35 }
         let target = desired * vmax
-        let accel = curves.acceleration(p.ratings) * dt
+        let accel = curves.acceleration(p.ratings) * lerp(0.75, 1, p.health) * dt
         let delta = target - p.velocity
         p.velocity += delta.length > accel ? delta.normalized * accel : delta
         p.location += p.velocity * dt
@@ -269,7 +292,7 @@ public struct World: Sendable {
         for p in players {
             mix(p.location.x.bitPattern); mix(p.location.y.bitPattern)
             mix(p.velocity.x.bitPattern); mix(p.velocity.y.bitPattern)
-            mix(p.stamina.energy.bitPattern)
+            mix(p.stamina.health.bitPattern)
         }
         mix(ballLocation.x.bitPattern); mix(ballLocation.y.bitPattern)
         return h

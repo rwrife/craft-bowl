@@ -231,17 +231,23 @@ fragment float4 scene_fragment(SceneOut in [[stage_in]],
         lit += lights[i].colorIntensity.rgb * lights[i].colorIntensity.w * att * nd;
     }
 
+    // Floodlights pool on the field; the bowl falls off into darkness with height and distance from it.
+    float3 wp = in.worldPos;
+    float outside = max(abs(wp.x) - (kHalfWidth + 3.0), 0.0) + max(-wp.z - 124.0, 0.0) + max(wp.z - 6.0, 0.0);
+    float pool = exp(-outside * 0.03) * exp(-max(wp.y - 1.5, 0.0) * 0.075);
+    lit *= mix(0.03, 1.0, pool);
+
     float3 color = albedo * lit * in.ao;
     if (!turf) {
         float rim = pow(1.0 - saturate(dot(N, V)), 3.0);
-        color += fu.lightColor.rgb * rim * fu.lightColor.w * (0.35 + 0.65 * shadow) * albedo;
+        color += fu.lightColor.rgb * rim * fu.lightColor.w * (0.35 + 0.65 * shadow) * albedo * pool;
         if ((in.flags & INST_CONTROLLED) != 0u) color += float3(1.0, 0.85, 0.2) * rim * 0.35;
         if ((in.flags & INST_TURBO) != 0u) color += float3(1.0, 0.75, 0.15) * rim * 0.6;
     }
 
     float dist = distance(fu.cameraPos.xyz, in.worldPos);
     float fog = 1.0 - exp(-dist * fu.skyHorizon.w);
-    color = mix(color, fu.skyHorizon.rgb * 0.5, fog);
+    color = mix(color, fu.skyHorizon.rgb * 0.6, fog);
     return float4(color, 1.0);
 }
 
@@ -263,14 +269,14 @@ fragment float4 sky_fragment(FullscreenOut in [[stage_in]], constant FrameUnifor
     float3 dir = normalize(p.xyz / p.w - fu.cameraPos.xyz);
     float up = saturate(dir.y);
     float3 sky = mix(fu.skyHorizon.rgb, fu.skyTop.rgb, pow(up, 0.45));
-    // light pollution from the floodlights, warm near the horizon
-    sky += float3(0.12, 0.09, 0.05) * exp(-up * 9.0) * 0.6;
+    // haze lit by the floodlight banks, strongest just above the rim of the stands
+    sky += float3(0.06, 0.07, 0.1) * exp(-up * 6.0) * 0.5;
 
     if (dir.y > 0.04) {
         float2 sph = float2(atan2(dir.x, dir.z), asin(dir.y)) * 90.0;
         float2 cell = floor(sph);
         float h = hash21(cell);
-        if (h > 0.975) {
+        if (h > 0.965) {
             float2 c = fract(sph) - 0.5;
             float twinkle = 0.6 + 0.4 * sin(fu.cameraPos.w * (1.0 + h * 3.0) + h * 50.0);
             float star = step(length(c), 0.16) * twinkle * smoothstep(0.04, 0.25, dir.y);
@@ -317,6 +323,14 @@ vertex DebugOut debug_vertex(uint vid [[vertex_id]], const device DebugVertex* v
 }
 
 fragment float4 debug_fragment(DebugOut in [[stage_in]]) { return in.color; }
+
+// Screen-space overlay (stat bars): positions are already NDC, colors already display-encoded.
+vertex DebugOut overlay_vertex(uint vid [[vertex_id]], const device DebugVertex* verts [[buffer(0)]]) {
+    DebugOut o;
+    o.position = float4(verts[vid].position.xy, 0.0, 1.0);
+    o.color = verts[vid].color;
+    return o;
+}
 
 // MARK: - GPU culling
 
