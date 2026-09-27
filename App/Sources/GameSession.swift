@@ -112,6 +112,7 @@ final class GameSession: RenderFrameSource {
     @ObservationIgnored private var introElapsed: Double = 0
     @ObservationIgnored private var crowdVolume: Float = 0.8
     @ObservationIgnored private var appliedCrowdVolume: Float = -1
+    @ObservationIgnored private var audioReady = false
     private(set) var homeTeam: TeamDefinition?
     private(set) var awayTeam: TeamDefinition?
 
@@ -141,6 +142,9 @@ final class GameSession: RenderFrameSource {
             settings.dynamicResolution = defaults.bool(forKey: "CBDynamicResolution")
         }
         do {
+            guard let titleURL = Bundle.main.url(forResource: "TitleMusic", withExtension: "mp3") else {
+                throw CocoaError(.fileNoSuchFile)
+            }
             guard let crowdURL = Bundle.main.url(forResource: "Crowd", withExtension: "mp3") else {
                 throw CocoaError(.fileNoSuchFile)
             }
@@ -150,6 +154,7 @@ final class GameSession: RenderFrameSource {
             guard cheerURLs.count == 3 else {
                 throw CocoaError(.fileNoSuchFile)
             }
+            try audio.loadTitleMusic(from: titleURL)
             try audio.loadCrowdLoop(from: crowdURL)
             try audio.loadCheers(from: cheerURLs)
             func volume(_ key: String, fallback: Float) -> Float {
@@ -164,6 +169,12 @@ final class GameSession: RenderFrameSource {
                 guard let self else { return }
                 do {
                     try await audio.start()
+                    audioReady = true
+                    if presentation == .attract {
+                        audio.playTitleMusic()
+                    } else {
+                        audio.transitionToCrowd()
+                    }
                 } catch {
                     audioError = error.localizedDescription
                 }
@@ -188,7 +199,7 @@ final class GameSession: RenderFrameSource {
         introElapsed = 0
         introSpotlightHome = true
         presentation = showIntro ? .intro : .gameplay
-        audio.playCrowdLoop()
+        if audioReady { audio.transitionToCrowd() }
         refreshCrowdVolume()
         resetSnapshots()
     }
@@ -203,7 +214,7 @@ final class GameSession: RenderFrameSource {
 
     func enterAttractMode() {
         presentation = .attract
-        audio.stopCrowdLoop()
+        if audioReady { audio.playTitleMusic() }
         autopilot = true
         homeTeam = nil
         awayTeam = nil

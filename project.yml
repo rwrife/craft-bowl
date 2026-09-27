@@ -34,6 +34,8 @@ targets:
         buildPhase: resources
       - path: App/Cheer3.mp3
         buildPhase: resources
+      - path: App/TitleMusic.mp3
+        buildPhase: resources
     dependencies:
       - package: CraftBowlKit
         products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
