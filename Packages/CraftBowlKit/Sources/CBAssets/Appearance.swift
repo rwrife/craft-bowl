@@ -54,6 +54,18 @@ public struct TeamUniform: Codable, Hashable, Sendable {
     public var numberFill: RGB
     public var numberOutline: RGB
 
+    public init(primary: RGB, secondary: RGB, trim: RGB, helmet: RGB, helmetStripe: RGB, pants: RGB,
+                numberFill: RGB, numberOutline: RGB) {
+        self.primary = primary
+        self.secondary = secondary
+        self.trim = trim
+        self.helmet = helmet
+        self.helmetStripe = helmetStripe
+        self.pants = pants
+        self.numberFill = numberFill
+        self.numberOutline = numberOutline
+    }
+
     /// Reference image home team: royal blue with gold.
     public static let blue = TeamUniform(
         primary: RGB(hex: 0x2A5BD7), secondary: RGB(hex: 0xF2B230), trim: RGB(hex: 0x1B2A55),

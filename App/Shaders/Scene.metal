@@ -42,6 +42,9 @@ struct SceneOut {
     float emissive;
     uint material [[flat]];
     uint flags [[flat]];
+    uint number [[flat]];
+    float3 numberFill [[flat]];
+    float3 numberOutline [[flat]];
 };
 
 struct Skinned { float4 world; float3 normal; };
@@ -109,7 +112,48 @@ vertex SceneOut scene_vertex(uint vid [[vertex_id]], uint iid [[instance_id]],
     o.albedo = materialColor(o.material, v.color.rgb, inst, teams);
     o.emissive = inst.tint.a;
     o.flags = inst.params.z;
+    uint team = min(inst.params.x, 1u);
+    o.number = (inst.params.w >> 8) & 0xFFu;
+    o.numberFill = teams[team].numberFill.rgb;
+    o.numberOutline = teams[team].numberOutline.rgb;
     return o;
+}
+
+static inline float segmentRect(float2 p, float2 lo, float2 hi) {
+    return float(all(p >= lo) && all(p <= hi));
+}
+
+static inline uint digitBits(uint digit) {
+    switch (min(digit, 9u)) {
+        case 0u: return 0x3Fu;
+        case 1u: return 0x06u;
+        case 2u: return 0x5Bu;
+        case 3u: return 0x4Fu;
+        case 4u: return 0x66u;
+        case 5u: return 0x6Du;
+        case 6u: return 0x7Du;
+        case 7u: return 0x07u;
+        case 8u: return 0x7Fu;
+        default: return 0x6Fu;
+    }
+}
+
+static inline float digitMask(float2 p, uint digit, float thickness) {
+    uint bits = digitBits(digit);
+    float h = thickness * 0.5;
+    float mask = 0.0;
+    if ((bits & 0x01u) != 0u) mask = max(mask, segmentRect(p, float2(0.2, 0.88 - h), float2(0.8, 0.88 + h)));
+    if ((bits & 0x02u) != 0u) mask = max(mask, segmentRect(p, float2(0.8 - h, 0.5), float2(0.8 + h, 0.88)));
+    if ((bits & 0x04u) != 0u) mask = max(mask, segmentRect(p, float2(0.8 - h, 0.12), float2(0.8 + h, 0.5)));
+    if ((bits & 0x08u) != 0u) mask = max(mask, segmentRect(p, float2(0.2, 0.12 - h), float2(0.8, 0.12 + h)));
+    if ((bits & 0x10u) != 0u) mask = max(mask, segmentRect(p, float2(0.2 - h, 0.12), float2(0.2 + h, 0.5)));
+    if ((bits & 0x20u) != 0u) mask = max(mask, segmentRect(p, float2(0.2 - h, 0.5), float2(0.2 + h, 0.88)));
+    if ((bits & 0x40u) != 0u) mask = max(mask, segmentRect(p, float2(0.2, 0.5 - h), float2(0.8, 0.5 + h)));
+    return mask;
+}
+
+static inline float2 jerseyDigitPoint(float2 uv, bool tens) {
+    return float2(uv.x * 2.0 - (tens ? 0.0 : 1.0), uv.y);
 }
 
 struct ShadowOut { float4 position [[position]]; };
@@ -205,6 +249,28 @@ fragment float4 scene_fragment(SceneOut in [[stage_in]],
     } else if ((flags & FLAG_PIXEL_NOISE) != 0u && in.material != MAT_EMISSIVE) {
         float3 texel = floor(in.local * 11.0 + 0.001);
         albedo *= 0.9 + 0.17 * hash21(texel.xy + texel.z * 7.31);
+    }
+
+    bool jerseyBack = in.material == MAT_PRIMARY && in.local.z > 0.215 &&
+                      in.local.y >= 1.2 && in.local.y <= 1.49 && abs(in.local.x) <= 0.3;
+    if (jerseyBack) {
+        float2 uv = float2((in.local.x + 0.3) / 0.6, (in.local.y - 1.2) / 0.29);
+        uint tens = in.number / 10u;
+        uint ones = in.number % 10u;
+        float outline = 0.0;
+        float fill = 0.0;
+        if (tens > 0u) {
+            outline = max(digitMask(jerseyDigitPoint(uv, true), tens, 0.2),
+                          digitMask(jerseyDigitPoint(uv, false), ones, 0.2));
+            fill = max(digitMask(jerseyDigitPoint(uv, true), tens, 0.11),
+                       digitMask(jerseyDigitPoint(uv, false), ones, 0.11));
+        } else {
+            float2 centered = float2(uv.x * 2.0 - 0.5, uv.y);
+            outline = digitMask(centered, ones, 0.2);
+            fill = digitMask(centered, ones, 0.11);
+        }
+        albedo = mix(albedo, in.numberOutline, outline);
+        albedo = mix(albedo, in.numberFill, fill);
     }
 
     if (in.material == MAT_EMISSIVE) {

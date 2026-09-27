@@ -26,6 +26,14 @@ targets:
       - App/Shaders
       - path: App/Assets.xcassets
         buildPhase: resources
+      - path: App/Crowd.mp3
+        buildPhase: resources
+      - path: App/Cheer.mp3
+        buildPhase: resources
+      - path: App/Cheer2.mp3
+        buildPhase: resources
+      - path: App/Cheer3.mp3
+        buildPhase: resources
     dependencies:
       - package: CraftBowlKit
         products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]

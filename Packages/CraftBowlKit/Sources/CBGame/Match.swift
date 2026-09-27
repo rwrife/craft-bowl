@@ -108,6 +108,18 @@ public struct Match: Sendable {
 
     public mutating func setCurves(_ curves: RatingCurves) { world.curves = curves }
 
+    public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
+                                   defense: [Position: (ratings: Ratings, number: Int)]) {
+        for index in world.players.indices {
+            let position = world.players[index].position
+            let roster = position.side == .offense ? offense : defense
+            guard let player = roster[position] else { continue }
+            world.players[index].ratings = player.ratings
+            world.players[index].number = player.number
+            world.players[index].stamina = Stamina(ratings: player.ratings, curves: world.curves)
+        }
+    }
+
     // MARK: Tick
 
     public mutating func step(input: TickInput, ai: [EntityID: PlayerIntent]) {
@@ -328,6 +340,7 @@ public struct Match: Sendable {
             homeScore += 7
             message = "TOUCHDOWN!"
             restartDrive()
+            simulateOpponentDrive()
         case .safety:
             awayScore += 2
             message = "SAFETY!"
@@ -357,6 +370,7 @@ public struct Match: Sendable {
         } else if down >= 4 {
             message += "  TURNOVER ON DOWNS"
             restartDrive()
+            simulateOpponentDrive()
         } else {
             nextLOS = spot
             nextDown = down + 1
@@ -368,6 +382,16 @@ public struct Match: Sendable {
         nextLOS = 35
         nextDown = 1
         nextFirstDown = 45
+    }
+
+    /// Temporary single-player possession simulation until defensive gameplay is available.
+    private mutating func simulateOpponentDrive() {
+        if world.rng.nextUInt32() % 5 == 0 {
+            awayScore += 7
+            message += "  CPU DRIVE: TD!"
+        } else {
+            message += "  CPU DRIVE: NO SCORE"
+        }
     }
 
     private mutating func resetFormation() {

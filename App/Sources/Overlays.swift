@@ -21,11 +21,15 @@ struct HUDView: View {
 
     var body: some View {
         let h = session.hud
+        let homeName = session.homeTeam?.abbreviation ?? "BLUE"
+        let awayName = session.awayTeam?.abbreviation ?? "RED"
+        let homeColor = session.homeTeam?.primaryColor ?? homeBlue
+        let awayColor = session.awayTeam?.primaryColor ?? awayRed
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 Spacer()
                 HStack(spacing: 0) {
-                    Text("BLUE").font(.pixel(15)).padding(.horizontal, 12).frame(height: 34).background(homeBlue)
+                    Text(homeName).font(.pixel(15)).padding(.horizontal, 12).frame(height: 34).background(homeColor)
                     Text("\(h.homeScore)").font(.pixel(22)).frame(width: 46, height: 34).background(panel)
                     VStack(spacing: 0) {
                         Text("Q\(h.quarter)").font(.pixel(10))
@@ -33,7 +37,7 @@ struct HUDView: View {
                     }
                     .frame(width: 64, height: 34).background(.black.opacity(0.9))
                     Text("\(h.awayScore)").font(.pixel(22)).frame(width: 46, height: 34).background(panel)
-                    Text("RED").font(.pixel(15)).padding(.horizontal, 12).frame(height: 34).background(awayRed)
+                    Text(awayName).font(.pixel(15)).padding(.horizontal, 12).frame(height: 34).background(awayColor)
                 }
                 .foregroundStyle(.white)
                 .overlay(Rectangle().stroke(.black, lineWidth: 2))

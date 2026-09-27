@@ -21,6 +21,11 @@ public struct GameSimulation: Sendable {
     }
 
     public mutating func setCurves(_ curves: RatingCurves) { match.setCurves(curves) }
+
+    public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
+                                   defense: [Position: (ratings: Ratings, number: Int)]) {
+        match.setRoster(offense: offense, defense: defense)
+    }
 }
 
 /// Records the input stream from a starting simulation so a bug can be reproduced exactly.

@@ -1,4 +1,5 @@
 import CBAssets
+import CBAudio
 import CBCore
 import CBGame
 import CBInput
@@ -60,6 +61,10 @@ enum ReplayState: Equatable {
     case verified(matches: Bool, ticks: Int)
 }
 
+private enum SessionPresentation: Equatable {
+    case attract, intro, gameplay
+}
+
 /// Owns the deterministic simulation, input, camera and render-frame assembly (the game loop).
 /// The renderer calls `update` once per display frame; the sim advances in fixed 60 Hz ticks.
 @MainActor
@@ -74,6 +79,8 @@ final class GameSession: RenderFrameSource {
     var autopilot = true
     var cameraPreset: Camera.Preset = .reference
     var settings = RenderSettings()
+    private(set) var introSpotlightHome = true
+    private(set) var audioError = ""
 
     @ObservationIgnored let input = InputQueue()
     @ObservationIgnored private(set) var keyboard: KeyboardInput!
@@ -100,6 +107,13 @@ final class GameSession: RenderFrameSource {
     @ObservationIgnored private var lastSimMs: Float = 0
     @ObservationIgnored private var hudTimer: Double = 0
     @ObservationIgnored private let tuning = TuningWatcher()
+    @ObservationIgnored private let audio = AudioSystem()
+    @ObservationIgnored private var presentation: SessionPresentation = .attract
+    @ObservationIgnored private var introElapsed: Double = 0
+    @ObservationIgnored private var crowdVolume: Float = 0.8
+    @ObservationIgnored private var appliedCrowdVolume: Float = -1
+    private(set) var homeTeam: TeamDefinition?
+    private(set) var awayTeam: TeamDefinition?
 
     init() {
         guard let loaded = try? Playbook.loadBundled() else { fatalError("Bundled playbook JSON failed to load") }
@@ -120,18 +134,91 @@ final class GameSession: RenderFrameSource {
         if UserDefaults.standard.object(forKey: "CBAutopilot") != nil {
             autopilot = UserDefaults.standard.bool(forKey: "CBAutopilot")
         }
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "CBShadows") != nil { settings.shadows = defaults.bool(forKey: "CBShadows") }
+        if defaults.object(forKey: "CBBloom") != nil { settings.bloom = defaults.bool(forKey: "CBBloom") }
+        if defaults.object(forKey: "CBDynamicResolution") != nil {
+            settings.dynamicResolution = defaults.bool(forKey: "CBDynamicResolution")
+        }
+        do {
+            guard let crowdURL = Bundle.main.url(forResource: "Crowd", withExtension: "mp3") else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            let cheerURLs = ["Cheer", "Cheer2", "Cheer3"].compactMap {
+                Bundle.main.url(forResource: $0, withExtension: "mp3")
+            }
+            guard cheerURLs.count == 3 else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            try audio.loadCrowdLoop(from: crowdURL)
+            try audio.loadCheers(from: cheerURLs)
+            try audio.start()
+            func volume(_ key: String, fallback: Float) -> Float {
+                defaults.object(forKey: key) == nil ? fallback : defaults.float(forKey: key)
+            }
+            setAudio(
+                master: volume("CBMasterVolume", fallback: 0.85),
+                music: volume("CBMusicVolume", fallback: 0.7),
+                sfx: volume("CBSFXVolume", fallback: 0.9),
+                crowd: volume("CBCrowdVolume", fallback: 0.8))
+        } catch {
+            audioError = error.localizedDescription
+        }
     }
 
-    /// Fresh game with the user in control (autopilot off).
-    func kickoff(seed: UInt64 = UInt64(Date().timeIntervalSince1970)) {
+    func startGame(home: TeamDefinition, away: TeamDefinition,
+                   seed: UInt64 = UInt64(Date().timeIntervalSince1970), showIntro: Bool = true) {
+        homeTeam = home
+        awayTeam = away
         sim = GameSimulation(seed: seed, playbook: playbook, format: format, curves: curves)
+        sim.setRoster(offense: home.gameRoster(for: .offense), defense: away.gameRoster(for: .defense))
         clock = GameClock()
         input.reset()
         autopilot = UserDefaults.standard.bool(forKey: "CBAutopilot")
         recording = nil
         playback = nil
         replay = .idle
+        introElapsed = 0
+        introSpotlightHome = true
+        presentation = showIntro ? .intro : .gameplay
+        audio.playCrowdLoop()
+        refreshCrowdVolume()
         resetSnapshots()
+    }
+
+    func beginGameplay() {
+        presentation = .gameplay
+        refreshCrowdVolume()
+        introElapsed = 0
+        introSpotlightHome = true
+        focus = Vec2(0, sim.match.lineOfScrimmage)
+    }
+
+    func enterAttractMode() {
+        presentation = .attract
+        audio.stopCrowdLoop()
+        autopilot = true
+        homeTeam = nil
+        awayTeam = nil
+        sim = GameSimulation(seed: UInt64(Date().timeIntervalSince1970), playbook: playbook, format: format, curves: curves)
+        clock = GameClock()
+        resetSnapshots()
+    }
+
+    func setAudio(master: Float, music: Float, sfx: Float, crowd: Float) {
+        audio.engine.mainMixerNode.outputVolume = clamp(master, 0, 1)
+        audio.music.outputVolume = clamp(music, 0, 1)
+        audio.sfx.outputVolume = clamp(sfx, 0, 1)
+        crowdVolume = clamp(crowd, 0, 1)
+        refreshCrowdVolume()
+    }
+
+    private func refreshCrowdVolume() {
+        let playSelection = presentation == .gameplay && sim.match.phase == .preSnap
+        let output = crowdVolume * (playSelection ? 0.75 : 1)
+        guard output != appliedCrowdVolume else { return }
+        audio.crowd.outputVolume = output
+        appliedCrowdVolume = output
     }
 
     private func resetSnapshots() {
@@ -177,6 +264,16 @@ final class GameSession: RenderFrameSource {
 
     func update(deltaTime: Double, frame: inout RenderFrame) {
         renderer?.settings = settings
+        refreshCrowdVolume()
+        if presentation == .intro {
+            introElapsed += deltaTime
+            let showHome = introElapsed < 2.5
+            if introSpotlightHome != showHome { introSpotlightHome = showHome }
+            WorldSnapshot.interpolate(prev, cur, 0, into: &interp)
+            buildFrame(&frame, dt: Float(deltaTime), realDt: Float(deltaTime))
+            buildIntroFrame(&frame)
+            return
+        }
         clock.timeScale = paused ? 0 : (slowMotion ? 0.25 : 1)
         let steps = clock.advance(by: deltaTime)
         let t0 = CACurrentMediaTime()
@@ -208,6 +305,7 @@ final class GameSession: RenderFrameSource {
     }
 
     private func tick() {
+        let phaseBeforeTick = sim.match.phase
         var ti: TickInput
         if var pb = playback {
             guard pb.cursor < pb.recording.inputs.count else {
@@ -226,6 +324,13 @@ final class GameSession: RenderFrameSource {
             if autopilot { ti = autopilotInput(ti) }
         }
         sim.tick(ti)
+        let majorOutcomes: Set<PlayOutcome> = [.touchdown, .interception, .safety, .sack]
+        if presentation == .gameplay, phaseBeforeTick == .live, sim.match.phase == .dead,
+           sim.match.lastOutcome.map(majorOutcomes.contains) == true ||
+           sim.match.message.contains("FIRST DOWN") ||
+           sim.match.message.contains("TURNOVER ON DOWNS") {
+            audio.playCheer()
+        }
         if case .recording = replay, recording != nil {
             recording!.append(ti, resultingChecksum: sim.world.checksum)
             if recording!.tickCount % 30 == 0 { replay = .recording(ticks: recording!.tickCount) }
@@ -271,6 +376,8 @@ final class GameSession: RenderFrameSource {
 
     private func buildFrame(_ frame: inout RenderFrame, dt: Float, realDt: Float) {
         let m = sim.match
+        frame.home = homeTeam?.uniform ?? .blue
+        frame.away = awayTeam?.uniform ?? .red
         frame.players.removeAll(keepingCapacity: true)
         if animPhase.count != interp.players.count { animPhase = Array(repeating: 0, count: interp.players.count) }
         let celebrating = m.phase == .dead && m.lastOutcome == .touchdown
@@ -344,6 +451,38 @@ final class GameSession: RenderFrameSource {
         buildStatBars(&frame.statBars)
         frame.debugLines.removeAll(keepingCapacity: true)
         if settings.debugDraw { buildDebug(&frame.debugLines) }
+    }
+
+    private func buildIntroFrame(_ frame: inout RenderFrame) {
+        let homeY: Float = 38
+        let awayY: Float = 68
+        for index in frame.players.indices {
+            let home = frame.players[index].team == 0
+            let teamIndex = home ? index : index - format.offense.count
+            let row = Float(teamIndex / 5)
+            let column = Float(teamIndex % 5) - 2
+            let y = (home ? homeY : awayY) + row * (home ? -2.2 : 2.2)
+            frame.players[index].position = fieldToWorld(Vec2(column * 2.4, y))
+            frame.players[index].yaw = home ? 0 : .pi
+            frame.players[index].pose = teamIndex.isMultiple(of: 3) ? .stance : .run
+            frame.players[index].speed01 = 0.35
+            frame.players[index].controlled = false
+        }
+
+        let home = introElapsed < 2.5
+        let localTime = Float(home ? introElapsed : introElapsed - 2.5)
+        let pan = lerp(-11, 11, clamp(localTime / 2.5, 0, 1))
+        let teamY = home ? homeY : awayY
+        let cameraY = teamY + (home ? 10 : -10)
+        frame.camera.eye = fieldToWorld(Vec2(pan, cameraY), height: 3.4)
+        frame.camera.target = fieldToWorld(Vec2(pan * 0.25, teamY), height: 1.2)
+        frame.camera.fovY = 0.72
+        frame.ballVisible = false
+        frame.showLines = false
+        frame.markers.removeAll(keepingCapacity: true)
+        frame.statBars.removeAll(keepingCapacity: true)
+        frame.debugLines.removeAll(keepingCapacity: true)
+        frame.crowdExcitement = 0.72
     }
 
     private func updateCamera(_ cam: inout Camera, dt: Float) {
