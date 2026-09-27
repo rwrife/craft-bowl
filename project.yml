@@ -31,7 +31,7 @@ targets:
         products: [CBCore, CBSim, CBPlays, CBAI, CBGame, CBRender, CBAssets, CBAnimation, CBInput, CBHUD, CBAudio]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.infinityball.craftbowl
+        PRODUCT_BUNDLE_IDENTIFIER: com.infinityball.craft-bowl
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIRequiresFullScreen: YES
