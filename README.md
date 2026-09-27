@@ -31,7 +31,7 @@ xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/dd \
   CODE_SIGNING_ALLOWED=NO build
 xcrun simctl install booted build/dd/Build/Products/Debug-iphonesimulator/CraftBowl.app
-xcrun simctl launch booted com.infinityball.craft-bowl -CBAutoStart YES -CBDevOverlay YES
+xcrun simctl launch booted com.infinityball.craftbowl -CBAutoStart YES -CBDevOverlay YES
 ```
 
 Launch arguments (UserDefaults): `-CBAutoStart YES` skips the title screen, `-CBAutopilot YES` lets the CPU play offense, and `-CBDevOverlay YES` opens the dev overlay.
