@@ -41,6 +41,8 @@ public final class Renderer: NSObject, MTKViewDelegate {
     private let timings = GPUTimings()
     private let captureScope: MTLCaptureScope
     private var residency: MTLResidencySet?
+    /// GPU culling + indirect draws. The Simulator's Metal device has no indirect-draw support, so it draws everything directly.
+    private let gpuDriven: Bool
 
     // Pipelines
     private let scenePSO, shadowPSO, skyPSO, glowPSO, debugPSO: MTLRenderPipelineState
@@ -63,7 +65,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
 
     // Per-frame arena
     private struct Layout {
-        var uniforms = 0, lights = 0, teams = 0, cull = 0, args = 0, instances = 0, bones = 0, glows = 0, debug = 0
+        var uniforms = 0, lights = 0, teams = 0, cull = 0, cullCrowd = 0, args = 0, instances = 0, bones = 0, glows = 0, debug = 0
         var size = 0
     }
     private let layout: Layout
@@ -88,6 +90,14 @@ public final class Renderer: NSObject, MTKViewDelegate {
     private var lastTime = CACurrentMediaTime()
     private var smoothedCPU: Float = 0
 
+    private static func supportsResidencySets(_ device: MTLDevice) -> Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        return device.supportsFamily(.apple6) || device.supportsFamily(.mac2)
+        #endif
+    }
+
     /// Needs an A14 (Apple GPU family 7) or newer. The Simulator's Metal device reports a lower family
     /// but supports every feature used here, so it's allowed for development.
     public static func isSupported(_ device: MTLDevice?) -> Bool {
@@ -104,6 +114,11 @@ public final class Renderer: NSObject, MTKViewDelegate {
               let queue = device.makeCommandQueue(), let library = device.makeDefaultLibrary()
         else { return nil }
         self.device = device
+        #if targetEnvironment(simulator)
+        gpuDriven = false
+        #else
+        gpuDriven = true
+        #endif
         self.queue = queue
         queue.label = "CraftBowl.Main"
 
@@ -243,7 +258,9 @@ public final class Renderer: NSObject, MTKViewDelegate {
         l.uniforms = take(MemoryLayout<FrameUniforms>.stride)
         l.lights = take(MemoryLayout<GPUPointLight>.stride * Renderer.maxLights)
         l.teams = take(MemoryLayout<GPUTeamColors>.stride * 2)
-        l.cull = take(MemoryLayout<CullUniforms>.stride * 2)
+        // Each constant-buffer binding needs its own 256-byte-aligned slot.
+        l.cull = take(MemoryLayout<CullUniforms>.stride)
+        l.cullCrowd = take(MemoryLayout<CullUniforms>.stride)
         l.args = take(MemoryLayout<IndexedIndirectArgs>.stride * 2)
         l.instances = take(MemoryLayout<GPUInstance>.stride * (Renderer.maxPlayers + 2))
         l.bones = take(MemoryLayout<simd_float4x4>.stride * Rig.boneCount * Renderer.maxPlayers)
@@ -285,7 +302,9 @@ public final class Renderer: NSObject, MTKViewDelegate {
                                                 crowdInstances, shadowMap, lut]
         allocations += arenas as [any MTLAllocation]
         allocations += visible as [any MTLAllocation]
-        if let set = try? device.makeResidencySet(descriptor: MTLResidencySetDescriptor()) {
+        // The Simulator's Metal device doesn't support residency sets; creating one trips an API-validation assertion.
+        if Self.supportsResidencySets(device),
+           let set = try? device.makeResidencySet(descriptor: MTLResidencySetDescriptor()) {
             set.addAllocations(allocations)
             set.commit()
             queue.addResidencySet(set)
@@ -300,7 +319,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
 
     private func ensureTargets(width: Int, height: Int) {
         guard width > 0, height > 0, SIMD2(width, height) != targetSize else { return }
-        let old: [any MTLAllocation] = [hdr, depth, bloom, ldr, upscaler?.output].compactMap { $0 }
+        let old: [any MTLAllocation] = [hdr, bloom, ldr, upscaler?.output].compactMap { $0 }
         targetSize = SIMD2(width, height)
         upscaler = Upscaler(device: device, width: width, height: height)
 
@@ -342,8 +361,9 @@ public final class Renderer: NSObject, MTKViewDelegate {
         ldr?.label = "LDR"
 
         if let residency {
+            // Memoryless depth has no backing allocation, so it's never added to the residency set.
             old.forEach { residency.removeAllocation($0) }
-            residency.addAllocations([hdr, depth, bloom, ldr, upscaler?.output].compactMap { $0 })
+            residency.addAllocations([hdr, bloom, ldr, upscaler?.output].compactMap { $0 })
             residency.commit()
         }
         stats.metalFXActive = upscaler != nil
@@ -375,8 +395,8 @@ public final class Renderer: NSObject, MTKViewDelegate {
         let base = arena.contents()
         let args = (base + layout.args).bindMemory(to: IndexedIndirectArgs.self, capacity: 2)
         // This slot's previous GPU work is complete (semaphore), so its culling results are readable.
-        stats.playersVisible = Int(args[0].instanceCount)
-        stats.crowdVisible = Int(args[1].instanceCount)
+        stats.playersVisible = gpuDriven ? Int(args[0].instanceCount) : stats.playersVisible
+        stats.crowdVisible = gpuDriven ? Int(args[1].instanceCount) : (settings.crowd ? crowdCount : 0)
 
         let now = CACurrentMediaTime()
         let dt = min(0.1, now - lastTime)
@@ -398,6 +418,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
         var drawCalls = 0
 
         let playerCount = min(frame.players.count, Renderer.maxPlayers)
+        if !gpuDriven { stats.playersVisible = playerCount }
         let glowCount = settings.glows ? min(glowTemplate.count, Renderer.maxGlows) : 0
         let fu = writeFrameData(base: base, aspect: Float(W) / Float(H), renderSize: SIMD2(Float(rw), Float(rh)),
                                 full: SIMD2(Float(W), Float(H)), playerCount: playerCount, glowCount: glowCount)
@@ -405,7 +426,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
 
         // Pass 1: GPU culling + shadow map
         cmd0.label = "Cull+Shadow"
-        if let ce = cmd0.makeComputeCommandEncoder() {
+        if gpuDriven, let ce = cmd0.makeComputeCommandEncoder() {
             ce.label = "GPU Cull"
             ce.setComputePipelineState(cullPSO)
             let tg = MTLSize(width: 64, height: 1, depth: 1)
@@ -419,7 +440,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
             }
             if settings.crowd {
                 ce.setBuffer(crowdInstances, offset: 0, index: 0)
-                ce.setBuffer(arena, offset: layout.cull + MemoryLayout<CullUniforms>.stride, index: 1)
+                ce.setBuffer(arena, offset: layout.cullCrowd, index: 1)
                 ce.dispatchThreadgroups(MTLSize(width: (crowdCount + 63) / 64, height: 1, depth: 1),
                                         threadsPerThreadgroup: tg)
             }
@@ -476,13 +497,19 @@ public final class Renderer: NSObject, MTKViewDelegate {
             drawCalls += encodeOpaque(e, arena: arena, playerCount: playerCount, shadow: false)
             if settings.crowd {
                 e.pushDebugGroup("Crowd")
-                var dp = DrawParams(visibleOffset: UInt32(Renderer.maxPlayers), useVisible: 1)
+                var dp = DrawParams(visibleOffset: UInt32(Renderer.maxPlayers), useVisible: gpuDriven ? 1 : 0)
                 e.setVertexBytes(&dp, length: MemoryLayout<DrawParams>.stride, index: 3)
                 e.setVertexBuffer(crowdPerson.vertices, offset: 0, index: 0)
                 e.setVertexBuffer(crowdInstances, offset: 0, index: 1)
-                e.drawIndexedPrimitives(type: .triangle, indexType: .uint32, indexBuffer: crowdPerson.indices,
-                                        indexBufferOffset: 0, indirectBuffer: arena,
-                                        indirectBufferOffset: layout.args + MemoryLayout<IndexedIndirectArgs>.stride)
+                if gpuDriven {
+                    e.drawIndexedPrimitives(type: .triangle, indexType: .uint32, indexBuffer: crowdPerson.indices,
+                                            indexBufferOffset: 0, indirectBuffer: arena,
+                                            indirectBufferOffset: layout.args + MemoryLayout<IndexedIndirectArgs>.stride)
+                } else {
+                    e.drawIndexedPrimitives(type: .triangle, indexCount: crowdPerson.indexCount, indexType: .uint32,
+                                            indexBuffer: crowdPerson.indices, indexBufferOffset: 0,
+                                            instanceCount: crowdCount)
+                }
                 drawCalls += 1
                 e.popDebugGroup()
             }
@@ -586,7 +613,7 @@ public final class Renderer: NSObject, MTKViewDelegate {
         if playerCount > 0 {
             e.setVertexBuffer(player.vertices, offset: 0, index: 0)
             e.setVertexBuffer(arena, offset: layout.instances, index: 1)
-            if shadow {
+            if shadow || !gpuDriven {
                 e.drawIndexedPrimitives(type: .triangle, indexCount: player.indexCount, indexType: .uint32,
                                         indexBuffer: player.indices, indexBufferOffset: 0, instanceCount: playerCount)
             } else {
@@ -724,16 +751,17 @@ public final class Renderer: NSObject, MTKViewDelegate {
             tint: SIMD4(1, 1, 1, 0), params: SIMD4(2, noBones, 0, 0), bounds: ball.bounds)
 
         let planes = RenderMath.frustumPlanes(viewProj)
-        let cull = (base + layout.cull).bindMemory(to: CullUniforms.self, capacity: 2)
+        let cullPlayers = (base + layout.cull).bindMemory(to: CullUniforms.self, capacity: 1)
         let enabled: UInt32 = settings.gpuCulling ? 1 : 0
-        cull[0] = CullUniforms(p0: planes[0], p1: planes[1], p2: planes[2], p3: planes[3], p4: planes[4], p5: planes[5],
-                               lod: SIMD4(cam.eye, 0), instanceCount: UInt32(playerCount), visibleOffset: 0,
-                               argsIndex: 0, enabled: enabled)
-        cull[1] = cull[0]
-        cull[1].lod = SIMD4(cam.eye, settings.crowdDistance)
-        cull[1].instanceCount = UInt32(crowdCount)
-        cull[1].visibleOffset = UInt32(Renderer.maxPlayers)
-        cull[1].argsIndex = 1
+        var c = CullUniforms(p0: planes[0], p1: planes[1], p2: planes[2], p3: planes[3], p4: planes[4], p5: planes[5],
+                             lod: SIMD4(cam.eye, 0), instanceCount: UInt32(playerCount), visibleOffset: 0,
+                             argsIndex: 0, enabled: enabled)
+        cullPlayers.pointee = c
+        c.lod = SIMD4(cam.eye, settings.crowdDistance)
+        c.instanceCount = UInt32(crowdCount)
+        c.visibleOffset = UInt32(Renderer.maxPlayers)
+        c.argsIndex = 1
+        (base + layout.cullCrowd).bindMemory(to: CullUniforms.self, capacity: 1).pointee = c
 
         let args = (base + layout.args).bindMemory(to: IndexedIndirectArgs.self, capacity: 2)
         args[0] = IndexedIndirectArgs(indexCount: UInt32(player.indexCount), instanceCount: 0, indexStart: 0,
