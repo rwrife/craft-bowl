@@ -8,7 +8,7 @@ project:              ## generate CraftBowl.xcodeproj from project.yml
 	xcodegen generate
 
 open: project
-	open CraftBowl.xcodeproj
+	open CraftBowl.xcworkspace
 
 build: project        ## build the iOS app for the simulator
 	xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
