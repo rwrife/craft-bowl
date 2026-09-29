@@ -1,0 +1,324 @@
+name: Release TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "Semantic MARKETING_VERSION (for example 0.1.0)"
+        required: true
+        default: "0.1.0"
+        type: string
+      upload:
+        description: "Upload the exported build to TestFlight"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SCHEME: CraftBowl
+  BUNDLE_ID: com.infinityball.craft-bowl
+  MARKETING_VERSION: ${{ inputs.marketing_version }}
+  CURRENT_PROJECT_VERSION: ${{ github.run_number }}
+
+jobs:
+  archive:
+    name: Archive and publish
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate release input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "marketing_version must use X.Y.Z format; got: $MARKETING_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Select Xcode 26 and verify iOS SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_path="$(python3 - <<'PY'
+          import glob
+          import re
+
+          candidates = glob.glob("/Applications/Xcode_26*.app")
+          def version(path):
+              return tuple(int(part) for part in re.findall(r"\d+", path))
+          print(max(candidates, key=version) if candidates else "")
+          PY
+          )"
+          if [[ -z "$xcode_path" ]]; then
+            echo "Xcode 26 is not installed on this runner" >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode_path"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          if [[ ! "$sdk_version" =~ ^(2[6-9]|[3-9][0-9])\. ]]; then
+            echo "iOS 26 or newer SDK required; got: $sdk_version" >&2
+            exit 1
+          fi
+
+      - name: Install project tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Materialize App Store Connect key
+        env:
+          ASC_KEY_ID_SECRET: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID_SECRET: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_SECRET: ${{ secrets.ASC_KEY_P8 }}
+          ASC_TEAM_ID_SECRET: ${{ secrets.ASC_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ASC_KEY_ID_SECRET:?Missing ASC_KEY_ID secret}"
+          : "${ASC_ISSUER_ID_SECRET:?Missing ASC_ISSUER_ID secret}"
+          : "${ASC_KEY_P8_SECRET:?Missing ASC_KEY_P8 secret}"
+          : "${ASC_TEAM_ID_SECRET:?Missing ASC_TEAM_ID secret}"
+
+          asc_dir="$RUNNER_TEMP/asc"
+          asc_key_path="$asc_dir/AuthKey_${ASC_KEY_ID_SECRET}.p8"
+          mkdir -p "$asc_dir"
+          printf '%s' "$ASC_KEY_P8_SECRET" | sed 's/\\n/\n/g' > "$asc_key_path"
+          chmod 600 "$asc_key_path"
+          test -s "$asc_key_path"
+
+          {
+            echo "ASC_KEY_PATH=$asc_key_path"
+            echo "ASC_KEY_ID_VALUE=$ASC_KEY_ID_SECRET"
+            echo "ASC_ISSUER_ID_VALUE=$ASC_ISSUER_ID_SECRET"
+            echo "ASC_TEAM_ID_VALUE=$ASC_TEAM_ID_SECRET"
+          } >> "$GITHUB_ENV"
+
+      - name: Archive signed app
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_path="$RUNNER_TEMP/CraftBowl.xcarchive"
+          xcodebuild archive \
+            -project CraftBowl.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$archive_path" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID_VALUE" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID_VALUE" \
+            DEVELOPMENT_TEAM="$ASC_TEAM_ID_VALUE" \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION"
+
+          app_path="$archive_path/Products/Applications/CraftBowl.app"
+          test -d "$app_path"
+          archived_bundle_id="$(plutil -extract CFBundleIdentifier raw "$app_path/Info.plist")"
+          if [[ "$archived_bundle_id" != "$BUNDLE_ID" ]]; then
+            echo "Archived bundle ID mismatch: $archived_bundle_id" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict "$app_path"
+          {
+            echo "ARCHIVE_PATH=$archive_path"
+            echo "APP_PATH=$app_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Build export options
+        env:
+          UPLOAD: ${{ inputs.upload }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export_options="$RUNNER_TEMP/ExportOptions.plist"
+          python3 - "$UPLOAD" "$ASC_TEAM_ID_VALUE" "$export_options" <<'PY'
+          import plistlib
+          import sys
+
+          upload = sys.argv[1] == "true"
+          team_id = sys.argv[2]
+          destination = sys.argv[3]
+          options = {
+              "method": "app-store-connect",
+              "signingStyle": "automatic",
+              "manageAppVersionAndBuildNumber": False,
+              "uploadSymbols": True,
+              "teamID": team_id,
+          }
+          if upload:
+              options.update({
+                  "destination": "upload",
+                  "uploadMethod": "app-store-connect",
+              })
+          with open(destination, "wb") as output:
+              plistlib.dump(options, output)
+          PY
+          plutil -lint "$export_options"
+          echo "EXPORT_OPTIONS_PATH=$export_options" >> "$GITHUB_ENV"
+
+      - name: Export archive and optionally upload to TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          export_path="$RUNNER_TEMP/exported"
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$export_path" \
+            -exportOptionsPlist "$EXPORT_OPTIONS_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID_VALUE" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID_VALUE"
+          echo "EXPORT_PATH=$export_path" >> "$GITHUB_ENV"
+
+      - name: Await processed TestFlight build
+        if: ${{ inputs.upload }}
+        env:
+          POLL_BUNDLE_ID: ${{ env.BUNDLE_ID }}
+          POLL_BUILD_NUMBER: ${{ env.CURRENT_PROJECT_VERSION }}
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/asc-venv"
+          evidence="$RUNNER_TEMP/testflight-evidence.json"
+          python3 -m venv "$venv"
+          "$venv/bin/pip" install --quiet 'pyjwt[crypto]'
+          "$venv/bin/python3" - "$evidence" <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.parse
+          import urllib.request
+
+          import jwt
+
+          evidence_path = sys.argv[1]
+          with open(os.environ["ASC_KEY_PATH"], encoding="utf-8") as source:
+              private_key = source.read()
+
+          def token():
+              now = int(time.time())
+              return jwt.encode(
+                  {
+                      "iss": os.environ["ASC_ISSUER_ID_VALUE"],
+                      "aud": "appstoreconnect-v1",
+                      "iat": now,
+                      "exp": now + 600,
+                  },
+                  private_key,
+                  algorithm="ES256",
+                  headers={"kid": os.environ["ASC_KEY_ID_VALUE"]},
+              )
+
+          def api(path, query):
+              url = "https://api.appstoreconnect.apple.com" + path
+              url += "?" + urllib.parse.urlencode(query)
+              request = urllib.request.Request(
+                  url,
+                  headers={"Authorization": "Bearer " + token()},
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          bundle_id = os.environ["POLL_BUNDLE_ID"]
+          build_number = os.environ["POLL_BUILD_NUMBER"]
+          apps = api("/v1/apps", {"filter[bundleId]": bundle_id})["data"]
+          if not apps:
+              raise SystemExit(f"No App Store Connect app found for {bundle_id}")
+          app_id = apps[0]["id"]
+          deadline = time.time() + 15 * 60
+          while time.time() < deadline:
+              builds = api(
+                  "/v1/builds",
+                  {
+                      "filter[app]": app_id,
+                      "sort": "-uploadedDate",
+                      "limit": "15",
+                  },
+              )["data"]
+              match = next(
+                  (
+                      build
+                      for build in builds
+                      if build["attributes"].get("version") == build_number
+                  ),
+                  None,
+              )
+              if match is None:
+                  print(f"Build {build_number} not indexed yet")
+                  time.sleep(30)
+                  continue
+              state = match["attributes"].get("processingState")
+              evidence_data = {
+                  "app_id": app_id,
+                  "build_id": match["id"],
+                  "bundle_id": bundle_id,
+                  "marketing_version": os.environ["MARKETING_VERSION"],
+                  "build_number": build_number,
+                  "processing_state": state,
+                  "source_sha": os.environ["GITHUB_SHA"],
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+              }
+              with open(evidence_path, "w", encoding="utf-8") as output:
+                  json.dump(evidence_data, output, indent=2, sort_keys=True)
+                  output.write("\n")
+              print(
+                  f"TestFlight build id={match['id']} "
+                  f"version={build_number} processing={state}"
+              )
+              if state in {"VALID", "COMPLETE"}:
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                      summary.write(
+                          "## TestFlight upload\n\n"
+                          f"- App ID: `{app_id}`\n"
+                          f"- Build ID: `{match['id']}`\n"
+                          f"- Version: `{os.environ['MARKETING_VERSION']} ({build_number})`\n"
+                          f"- Processing: `{state}`\n"
+                      )
+                  break
+              if state in {"FAILED", "INVALID"}:
+                  raise SystemExit(f"TestFlight processing failed: {state}")
+              time.sleep(30)
+          else:
+              raise SystemExit("Timed out waiting for TestFlight processing")
+          PY
+          echo "EVIDENCE_PATH=$evidence" >> "$GITHUB_ENV"
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-release-${{ github.run_id }}
+          path: |
+            ${{ env.EVIDENCE_PATH }}
+            ${{ env.EXPORT_PATH }}/*.ipa
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Remove App Store Connect key material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/asc-venv"
+          rm -f "$RUNNER_TEMP/ExportOptions.plist"
