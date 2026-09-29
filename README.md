@@ -24,6 +24,18 @@ Swift package. Run `make open` after a fresh checkout. Edit `project.yml` instea
 
 If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 
+## CI status
+
+`main` PR/push CI now enforces all issue-#2 core gates on hosted macOS runners:
+
+- Swift package tests (`swift test`) with xUnit output at `TestResults/CraftBowlKit.xml`
+- Metal shader compile with `-Werror` plus explicit `metallib` link
+- Strict `swift-format` lint on changed Swift files in pull requests
+- App-scheme simulator tests via `xcodebuild test`
+- Test artifact upload (`xUnit` + `.xcresult`) for every run
+
+`swift-format` is intentionally scoped to changed Swift files in PRs while legacy formatting debt is burned down.
+
 ### Command-line run (Simulator)
 
 ```sh

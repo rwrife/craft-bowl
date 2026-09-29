@@ -10,10 +10,21 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Select Xcode 26+
-        run: sudo xcode-select -s "$(find /Applications -maxdepth 1 -name 'Xcode_2*.app' | sort -V | tail -1)"
+        run: |
+          set -euo pipefail
+          xcode_path="$(find /Applications -maxdepth 1 -name 'Xcode_2*.app' | sort | tail -1)"
+          if [[ -z "$xcode_path" ]]; then
+            echo "Xcode 26 or newer is required" >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode_path"
+          xcodebuild -version
       - name: Install tools
         run: brew install xcodegen swift-format
       - name: Cache SwiftPM build
@@ -23,20 +34,67 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Packages/CraftBowlKit/Package.swift', 'Packages/CraftBowlKit/Sources/**/*.swift') }}
           restore-keys: spm-${{ runner.os }}-
       - name: Test CraftBowlKit (all modules, macOS host)
-        working-directory: Packages/CraftBowlKit
-        run: swift test
-      - name: Compile shaders (-Werror)
         run: |
-          for f in App/Shaders/*.metal; do
-            xcrun -sdk iphonesimulator metal -Werror -I App/Shaders -c "$f" -o "$RUNNER_TEMP/$(basename "$f").air"
+          mkdir -p TestResults
+          swift test \
+            --package-path Packages/CraftBowlKit \
+            --parallel \
+            --xunit-output "$PWD/TestResults/CraftBowlKit.xml"
+      - name: Compile shaders into metallib (-Werror)
+        run: |
+          set -euo pipefail
+          air_files=()
+          for source in App/Shaders/*.metal; do
+            air="$RUNNER_TEMP/$(basename "${source%.metal}").air"
+            xcrun -sdk iphonesimulator metal -Werror -I App/Shaders -c "$source" -o "$air"
+            air_files+=("$air")
           done
-      - name: Lint (advisory)
-        continue-on-error: true
-        run: swift-format lint --recursive App Packages
+          xcrun -sdk iphonesimulator metallib "${air_files[@]}" -o "$RUNNER_TEMP/CraftBowl.metallib"
+          test -s "$RUNNER_TEMP/CraftBowl.metallib"
+      - name: Lint changed Swift files
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git cat-file -e "${base}^{commit}"
+          git cat-file -e "${head}^{commit}"
+          changed_list="$RUNNER_TEMP/changed-swift.txt"
+          git diff --name-only --diff-filter=ACMR "$base" "$head" -- '*.swift' > "$changed_list"
+          changed_swift=()
+          while IFS= read -r file; do
+            changed_swift+=("$file")
+          done < "$changed_list"
+          if ((${#changed_swift[@]} == 0)); then
+            echo "No changed Swift files"
+            exit 0
+          fi
+          echo "Linting ${#changed_swift[@]} changed Swift file(s)"
+          swift-format lint --strict --configuration .swift-format "${changed_swift[@]}"
       - name: Generate project
         run: xcodegen generate
+      - name: Test app scheme (iOS Simulator)
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CraftBowl.xcodeproj \
+            -scheme CraftBowl \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            -resultBundlePath "$RUNNER_TEMP/CraftBowlTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet
       - name: Build app (iOS Simulator)
         run: |
           xcodebuild -project CraftBowl.xcodeproj -scheme CraftBowl \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build -quiet
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_id }}
+          path: |
+            TestResults/CraftBowlKit.xml
+            ${{ runner.temp }}/CraftBowlTests.xcresult
+          if-no-files-found: error
+          retention-days: 14

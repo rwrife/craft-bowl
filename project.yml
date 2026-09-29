@@ -58,10 +58,25 @@ targets:
         UIRequiredDeviceCapabilities: [metal]
         GCSupportedGameControllers:
           - ProfileName: ExtendedGamepad
+
+  CraftBowlTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/CraftBowlTests
+    dependencies:
+      - target: CraftBowl
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.infinityball.craft-bowl.tests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   CraftBowl:
     build:
       targets:
         CraftBowl: all
+        CraftBowlTests: [test]
     test:
-      targets: []
+      targets:
+        - name: CraftBowlTests
