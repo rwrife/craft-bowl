@@ -22,6 +22,8 @@ public struct GameSimulation: Sendable {
 
     public mutating func setCurves(_ curves: RatingCurves) { match.setCurves(curves) }
 
+    public mutating func setOpponentName(_ name: String) { match.setOpponentName(name) }
+
     public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
                                    defense: [Position: (ratings: Ratings, number: Int)]) {
         match.setRoster(offense: offense, defense: defense)

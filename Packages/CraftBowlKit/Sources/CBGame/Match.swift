@@ -12,12 +12,72 @@ public enum PlayOutcome: String, Sendable, Equatable {
     case tackled, outOfBounds, touchdown, incomplete, interception, safety, dive, sack
 }
 
+/// Box score for a simulated opposing-team possession, shown to the user once the drive is over.
+public struct OpponentDrive: Sendable, Equatable {
+    /// What handed the ball over to the opposing team.
+    public enum Trigger: String, Sendable, Equatable {
+        case touchdown, interception, downs, safety
+
+        public var text: String {
+            switch self {
+            case .touchdown: "AFTER KICKOFF"
+            case .interception: "AFTER INTERCEPTION"
+            case .downs: "AFTER TURNOVER ON DOWNS"
+            case .safety: "AFTER SAFETY"
+            }
+        }
+    }
+
+    /// How the possession finished.
+    public enum Ending: String, Sendable, Equatable {
+        case touchdown, fieldGoal, missedFieldGoal, punt, downs, turnover, clockExpired
+
+        public var text: String {
+            switch self {
+            case .touchdown: "TOUCHDOWN"
+            case .fieldGoal: "FIELD GOAL"
+            case .missedFieldGoal: "MISSED FIELD GOAL"
+            case .punt: "PUNT"
+            case .downs: "TURNOVER ON DOWNS"
+            case .turnover: "TURNOVER"
+            case .clockExpired: "END OF QUARTER"
+            }
+        }
+    }
+
+    public let team: String
+    public let trigger: Trigger
+    public let ending: Ending
+    public let plays: Int
+    public let yards: Int
+    public let points: Int
+    public let seconds: Float
+    /// Where the drive started and finished, as the opposing team's own yard line (0–100).
+    public let startYard: Int
+    public let endYard: Int
+
+    public var headline: String { "\(team) DRIVE" }
+    public var timeOfPossession: String {
+        let s = Int(seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+    public var resultText: String { points > 0 ? "\(ending.text)  (+\(points))" : ending.text }
+    public var fieldPositionText: String {
+        func spot(_ yard: Int) -> String {
+            yard == 50 ? "MIDFIELD" : (yard < 50 ? "OWN \(yard)" : "OPP \(100 - yard)")
+        }
+        return "\(spot(startYard)) → \(spot(endYard))"
+    }
+}
+
 /// Simplified game rules around one user offense vs a CPU defense (sandbox until issue #29 lands):
 /// formation → snap → QB phase → runner phase → whistle → spot & downs.
 public struct Match: Sendable {
     public static let ticksPerSecond = Int(GameClock.ticksPerSecond)
     public static let autoSnapTicks = 60 * 10
     public static let deadBallTicks = 150
+    /// The opposing-possession recap stays up this long if the user never snaps the next play.
+    public static let driveRecapTicks = 60 * 30
     public static let quarterSeconds: Float = 180
     public static let passSpeed: Float = 22
 
@@ -45,7 +105,13 @@ public struct Match: Sendable {
     public private(set) var playChoices: [Int] = []
     /// Which of `playChoices` is picked, or nil until the user chooses.
     public private(set) var chosenChoice: Int?
+    /// Box score of the most recent simulated opposing possession, cleared at the next snap.
+    public private(set) var opponentDrive: OpponentDrive?
+    /// Name shown for the opposing team in drive recaps (set from the selected away team).
+    public private(set) var opponentName = "OPPONENT"
     public static let choicesPerDown = 3
+
+    private var opponentDriveTicks = 0
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -108,6 +174,11 @@ public struct Match: Sendable {
 
     public mutating func setCurves(_ curves: RatingCurves) { world.curves = curves }
 
+    public mutating func setOpponentName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        opponentName = trimmed.isEmpty ? "OPPONENT" : trimmed
+    }
+
     public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
                                    defense: [Position: (ratings: Ratings, number: Int)]) {
         for index in world.players.indices {
@@ -124,6 +195,10 @@ public struct Match: Sendable {
 
     public mutating func step(input: TickInput, ai: [EntityID: PlayerIntent]) {
         phaseTicks += 1
+        if opponentDrive != nil {
+            opponentDriveTicks -= 1
+            if opponentDriveTicks <= 0 { opponentDrive = nil }
+        }
         switch phase {
         case .preSnap: stepPreSnap(input)
         case .live: stepLive(input, ai: ai)
@@ -177,6 +252,8 @@ public struct Match: Sendable {
     private mutating func snap() {
         defenseIndex = Int(world.rng.nextUInt32() % UInt32(playbook.defense.count))
         guard let qb = world.player(at: .qb) else { return }
+        opponentDrive = nil
+        opponentDriveTicks = 0
         world.ball = .held(by: qb.id)
         controlled = qb.id
         phase = .live
@@ -340,7 +417,7 @@ public struct Match: Sendable {
             homeScore += 7
             message = "TOUCHDOWN!"
             restartDrive()
-            simulateOpponentDrive()
+            simulateOpponentDrive(after: .touchdown)
         case .safety:
             awayScore += 2
             message = "SAFETY!"
@@ -348,6 +425,7 @@ public struct Match: Sendable {
         case .interception:
             message = "INTERCEPTED!"
             restartDrive()
+            simulateOpponentDrive(after: .interception)
         case .incomplete:
             message = text ?? "INCOMPLETE"
             advanceDown(to: lineOfScrimmage)
@@ -370,7 +448,7 @@ public struct Match: Sendable {
         } else if down >= 4 {
             message += "  TURNOVER ON DOWNS"
             restartDrive()
-            simulateOpponentDrive()
+            simulateOpponentDrive(after: .downs)
         } else {
             nextLOS = spot
             nextDown = down + 1
@@ -384,14 +462,74 @@ public struct Match: Sendable {
         nextFirstDown = 45
     }
 
-    /// Temporary single-player possession simulation until defensive gameplay is available.
-    private mutating func simulateOpponentDrive() {
-        if world.rng.nextUInt32() % 5 == 0 {
-            awayScore += 7
-            message += "  CPU DRIVE: TD!"
-        } else {
-            message += "  CPU DRIVE: NO SCORE"
+    /// Temporary single-player possession simulation until defensive gameplay is available: plays out the
+    /// opposing drive with the deterministic RNG and records a box score for the recap panel.
+    private mutating func simulateOpponentDrive(after trigger: OpponentDrive.Trigger) {
+        let startYard = 25
+        var yard = Float(startYard)
+        var driveDown = 1
+        var toGo: Float = 10
+        var plays = 0
+        var seconds: Float = 0
+        var points = 0
+        var ending: OpponentDrive.Ending = .punt
+
+        while plays < 24 {
+            if clock <= 0 { ending = .clockExpired; break }
+            plays += 1
+            let elapsed = Float(8 + world.rng.nextUInt32() % 9)
+            seconds += elapsed
+            clock = max(0, clock - elapsed)
+
+            let roll = world.rng.unitFloat()
+            let gain: Float
+            switch roll {
+            case ..<0.22: gain = 0                                                  // incompletion / stuff
+            case ..<0.34: gain = -Float(world.rng.nextUInt32() % 8) - 1             // loss or sack
+            case ..<0.80: gain = Float(world.rng.nextUInt32() % 9) + 1              // short gain
+            case ..<0.97: gain = Float(9 + world.rng.nextUInt32() % 13)             // chunk play
+            default: gain = Float(22 + world.rng.nextUInt32() % 30)                 // big play
+            }
+            yard = clamp(yard + gain, 1, 100)
+
+            if yard >= 100 {
+                points = 7
+                awayScore += 7
+                ending = .touchdown
+                break
+            }
+            if world.rng.unitFloat() < 0.022 {
+                ending = .turnover
+                break
+            }
+            if gain >= toGo {
+                driveDown = 1
+                toGo = min(10, 100 - yard)
+            } else if driveDown >= 4 {
+                // Fourth down: try a field goal in range, otherwise punt it away.
+                if yard >= 62 {
+                    if world.rng.unitFloat() < clamp(0.35 + (yard - 62) * 0.016, 0.3, 0.9) {
+                        points = 3
+                        awayScore += 3
+                        ending = .fieldGoal
+                    } else {
+                        ending = .missedFieldGoal
+                    }
+                } else {
+                    ending = world.rng.unitFloat() < 0.15 ? .downs : .punt
+                }
+                break
+            } else {
+                driveDown += 1
+                toGo -= gain
+            }
         }
+
+        let endYard = ending == .touchdown ? 100 : Int(yard.rounded())
+        opponentDriveTicks = Match.driveRecapTicks
+        opponentDrive = OpponentDrive(team: opponentName, trigger: trigger, ending: ending,
+                                      plays: plays, yards: endYard - startYard, points: points,
+                                      seconds: seconds, startYard: startYard, endYard: endYard)
     }
 
     private mutating func resetFormation() {

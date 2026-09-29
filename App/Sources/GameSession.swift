@@ -29,6 +29,8 @@ struct HUDState: Equatable {
     /// The 3 plays offered this down and which one (if any) is picked.
     var playCards: [PlayDiagram] = []
     var chosenCard: Int?
+    /// Recap of the last simulated opposing possession, shown until the next snap.
+    var opponentDrive: OpponentDrive?
 }
 
 /// Dev overlay numbers, refreshed ~4×/s.
@@ -190,6 +192,7 @@ final class GameSession: RenderFrameSource {
         awayTeam = away
         sim = GameSimulation(seed: seed, playbook: playbook, format: format, curves: curves)
         sim.setRoster(offense: home.gameRoster(for: .offense), defense: away.gameRoster(for: .defense))
+        sim.setOpponentName(away.name)
         clock = GameClock()
         input.reset()
         autopilot = UserDefaults.standard.bool(forKey: "CBAutopilot")
@@ -617,6 +620,7 @@ final class GameSession: RenderFrameSource {
         let yard = Int((m.lineOfScrimmage - Field.ownGoalLine).rounded())
         h.ballOn = yard == 50 ? "MIDFIELD" : (yard < 50 ? "OWN \(yard)" : "OPP \(100 - yard)")
         h.message = m.message
+        h.opponentDrive = m.opponentDrive
         h.phase = m.phase
         h.playName = m.offensePlay.name.uppercased()
         h.defenseName = m.defensePlay.name.uppercased()
