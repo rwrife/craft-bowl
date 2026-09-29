@@ -61,6 +61,10 @@ struct HUDView: View {
                     .shadow(color: .black, radius: 0, x: 3, y: 3)
                     .padding(.top, 28)
             }
+            if let drive = h.opponentDrive {
+                OpponentDriveRecap(drive: drive, teamColor: awayColor)
+                    .padding(.top, 16)
+            }
             Spacer()
             if h.phase == .live {
                 HStack(spacing: 6) {
@@ -75,6 +79,57 @@ struct HUDView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// Box score shown after a simulated opposing possession: who had the ball, how they got it,
+/// what they did with it and how it ended.
+private struct OpponentDriveRecap: View {
+    let drive: OpponentDrive
+    let teamColor: Color
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(drive.headline).font(.pixel(14)).lineLimit(1).minimumScaleFactor(0.6)
+                Text(drive.trigger.text).font(.pixel(10, .bold)).foregroundStyle(.white.opacity(0.85))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .frame(maxWidth: .infinity)
+            .background(teamColor)
+
+            VStack(spacing: 4) {
+                HStack(spacing: 10) {
+                    StatChip(label: "PLAYS", value: "\(drive.plays)")
+                    StatChip(label: "YARDS", value: "\(drive.yards >= 0 ? "+" : "")\(drive.yards)")
+                    StatChip(label: "TIME", value: drive.timeOfPossession)
+                }
+                Text(drive.fieldPositionText).font(.pixel(10)).foregroundStyle(.white.opacity(0.75))
+                Text(drive.resultText)
+                    .font(.pixel(16, .black))
+                    .foregroundStyle(drive.points > 0 ? Color.yellow : Color.white)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(panel)
+        }
+        .frame(width: 300)
+        .overlay(Rectangle().stroke(.black, lineWidth: 2))
+        .shadow(color: .black.opacity(0.6), radius: 0, x: 3, y: 3)
+    }
+}
+
+private struct StatChip: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(label).font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+            Text(value).font(.pixel(16, .black)).foregroundStyle(.white)
+        }
+        .frame(minWidth: 62)
     }
 }
 
