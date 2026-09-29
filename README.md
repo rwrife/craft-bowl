@@ -16,10 +16,11 @@ A modern-retro, blocky American football game for iOS. It looks like a blocky du
 
 ```sh
 make bootstrap   # installs xcodegen + swift-format via Homebrew
-make open        # generates CraftBowl.xcodeproj from project.yml and opens it
+make open        # generates CraftBowl.xcodeproj and opens CraftBowl.xcworkspace
 ```
 
-The `.xcodeproj` is generated and git-ignored. Edit `project.yml` instead.
+The `.xcodeproj` is generated and git-ignored; the committed workspace references it and the local
+Swift package. Run `make open` after a fresh checkout. Edit `project.yml` instead of the generated project.
 
 If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 

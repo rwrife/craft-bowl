@@ -34,6 +34,11 @@ let package = Package(
         .target(name: "CBGame", dependencies: ["CBCore", "CBSim", "CBPlays", "CBAI"], swiftSettings: strict),
         .target(name: "CBAnimation", dependencies: ["CBCore"], swiftSettings: strict),
         .target(name: "CBAssets", dependencies: ["CBCore"], swiftSettings: strict),
+        .testTarget(
+            name: "ScaffoldTests",
+            dependencies: ["CBCore", "CBSim", "CBPlays", "CBAI", "CBGame"],
+            swiftSettings: strict
+        ),
 
         // Apple-platform modules (guarded with canImport so the package still resolves elsewhere)
         .target(name: "CBInput", dependencies: ["CBCore", "CBSim"], swiftSettings: strict),
