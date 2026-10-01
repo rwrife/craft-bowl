@@ -71,6 +71,8 @@ jobs:
           fi
           echo "Linting ${#changed_swift[@]} changed Swift file(s)"
           swift-format lint --strict --configuration .swift-format "${changed_swift[@]}"
+      - name: Determinism RNG lint (sim modules use only seeded PCG32)
+        run: bash scripts/check-sim-rng.sh
       - name: Generate project
         run: xcodegen generate
       - name: Test app scheme (iOS Simulator)
