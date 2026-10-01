@@ -1,8 +1,8 @@
 /// Deterministic PCG32 random number generator.
 ///
 /// All simulation randomness MUST come from a seeded `PCG32` owned by the sim world so that
-/// recorded input streams replay identically (see docs/PLAN.md §2). Never call `Int.random()`
-/// with the system generator from sim code.
+/// recorded input streams replay identically (see docs/PLAN.md §2). Never use the system
+/// generator from sim code — call `PCG32.nextUInt32()` / `unitFloat()` instead.
 public struct PCG32: RandomNumberGenerator, Sendable, Equatable {
     private var state: UInt64
     private let increment: UInt64
