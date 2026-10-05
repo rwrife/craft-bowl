@@ -1,6 +1,6 @@
 # Daily maintenance state
 
-## Latest run (in progress)
+## Latest run
 
 - Timestamp: `2026-10-05T12:24:19Z`
 - Repository: `rwrife/craft-bowl`; base: `de57bbd4d905ace532be43053565100ee35047b6` (`origin/main`)
@@ -11,5 +11,7 @@
 - Actions taken: preflight and queue audit passed; dedicated worktree created. Implemented 3/3/2/2 weighted team overall in `CBSim.TeamRating`, wired the title/team-selection UI's OVR to it, added package and app smoke tests. The issue stays open because not all derived ratings have been audited/implemented.
 - Local verification: Docker `swift:6.2` focused TDD RED showed missing `TeamRating`, then GREEN passed; mirrored all three `ScaffoldTests` files through a local transitive-only SwiftPM probe (7/7 XCTest PASS), `bash scripts/check-sim-rng.sh` PASS (19 files), `swiftc -parse` on changed app files PASS, and Swift 6.2 `swift-format lint --strict --configuration .swift-format` on changed Swift files PASS after formatting the pre-existing style drift in `RootView.swift`. Direct Linux `swift test --package-path Packages/CraftBowlKit` failed on existing Apple-only `CBRender/Meshes.swift` import of `simd`; this is not a test-result pass.
 - Review/freeze: independent read-only review PASS on complete staged diff (SHA-256 `2af395d1ee61a56ae554c2279a633a4c9526515347a48be6933cb4766317d5c1`), including non-vacuous whole-roster rounding test; staged diff check and clean unstaged diff PASS. Implemented and pushed commit `0abcec267f0cbb930de9a01db2a62f52020a9a93`.
-- PR: [#67 — weighted team overall](https://github.com/rwrife/craft-bowl/pull/67) opened as draft with `Advances #24` (non-closing). At initial snapshot: MERGEABLE, queued CI [run 37310132556](https://github.com/rwrife/craft-bowl/actions/runs/37310132556); iOS build/test result not yet observed. CI status is re-evaluated against the final PR head before merge.
-- Blockers: no GitHub access blocker. Linux cannot execute Xcode/iOS simulator or verify interactive runtime criteria; do not merge until macOS CI passes.
+- PR: [#67 — weighted team overall](https://github.com/rwrife/craft-bowl/pull/67) opened draft then marked ready; final PR head `5933a38b9c148d219b6b8dc6b85a7f565697453c`, `MERGEABLE`/`CLEAN`, [run 37310179848](https://github.com/rwrife/craft-bowl/actions/runs/37310179848) SUCCESS (package tests, Metal shader compile, changed-file lint, RNG lint, iOS Simulator app test and build all passed). Squash merged at `ff5b2ea157b59519a36e2856971cf86a7874cef3` on `2026-10-05T12:42:12Z`; post-merge PR state verified `MERGED`.
+- Issue #24 remains OPEN, as intended for a partial slice; [merge-evidence comment](https://github.com/rwrife/craft-bowl/issues/24#issuecomment-5994669038) records completed scope and derived-trait gaps. The tracking checklist for #24 stays unchecked.
+- Post-merge main CI at `ff5b2ea` was in progress at closeout-state preparation: [run 37311372776](https://github.com/rwrife/craft-bowl/actions/runs/37311372776); PR-head CI is the merge gate above. No physical-device, interactive tuning, signing or publication evidence is claimed.
+- Blockers: no PR blockers. Linux cannot run local Xcode/iOS simulator or verify #4/#5 interactive runtime acceptance. State-sync docs PR to finalize this record follows the feature merge.
