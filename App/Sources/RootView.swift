@@ -28,22 +28,23 @@ struct TeamDefinition: Identifiable, Hashable, Sendable {
         Color(red: Double(uniform.secondary.r), green: Double(uniform.secondary.g), blue: Double(uniform.secondary.b))
     }
     var overall: Int {
-        let total = roster.reduce(0) { $0 + $1.ratings.power + $1.ratings.speed + $1.ratings.endurance + $1.ratings.ability }
-        return total / max(1, roster.count * 4)
+        TeamRating.overall(roster.map(\.ratings))
     }
 
     func gameRoster(for side: Side) -> [Position: (ratings: Ratings, number: Int)] {
-        Dictionary(uniqueKeysWithValues: roster.filter { $0.id.side == side }.map {
-            ($0.id, (ratings: $0.ratings, number: $0.number))
-        })
+        Dictionary(
+            uniqueKeysWithValues: roster.filter { $0.id.side == side }.map {
+                ($0.id, (ratings: $0.ratings, number: $0.number))
+            })
     }
 }
 
 enum TeamCatalog {
     static let teams: [TeamDefinition] = {
         let teams = [
-            make("austin", "Austin", "Armadillos", "AUS", 0x2457D6, 0xF5B82E, 11, 0,
-                 specialNames: [.qb: "Ryan", .rb: "Hunter", .laneCenter: "Jaison"]),
+            make(
+                "austin", "Austin", "Armadillos", "AUS", 0x2457D6, 0xF5B82E, 11, 0,
+                specialNames: [.qb: "Ryan", .rb: "Hunter", .laneCenter: "Jaison"]),
             make("brooklyn", "Brooklyn", "Bolts", "BRK", 0x121820, 0x22C8F2, 23, 18),
             make("miami", "Miami", "Waves", "MIA", 0x00A6A6, 0xFF6B35, 37, 36),
             make("chicago", "Chicago", "Foundry", "CHI", 0xA51C30, 0xD7DCE2, 41, 54),
@@ -67,9 +68,11 @@ enum TeamCatalog {
         "Lane", "Miles", "North", "Price", "Reed", "Stone", "Turner", "Vale", "West", "Young",
     ]
 
-    private static func make(_ id: String, _ city: String, _ nickname: String, _ abbreviation: String,
-                             _ primary: UInt32, _ secondary: UInt32, _ seed: UInt64, _ rosterOffset: Int,
-                             specialNames: [Position: String] = [:]) -> TeamDefinition {
+    private static func make(
+        _ id: String, _ city: String, _ nickname: String, _ abbreviation: String,
+        _ primary: UInt32, _ secondary: UInt32, _ seed: UInt64, _ rosterOffset: Int,
+        specialNames: [Position: String] = [:]
+    ) -> TeamDefinition {
         var rng = CatalogRNG(seed: seed)
         let positions = Position.allCases
         let usedNumbers = positions.enumerated().map { index, _ in 1 + ((index * 11 + Int(seed)) % 98) }
@@ -91,22 +94,24 @@ enum TeamCatalog {
             primary: primaryRGB, secondary: secondaryRGB, trim: dark,
             helmet: primaryRGB, helmetStripe: secondaryRGB, pants: dark,
             numberFill: secondaryRGB, numberOutline: dark)
-        return TeamDefinition(id: id, city: city, nickname: nickname, abbreviation: abbreviation,
-                              uniform: uniform, roster: roster)
+        return TeamDefinition(
+            id: id, city: city, nickname: nickname, abbreviation: abbreviation,
+            uniform: uniform, roster: roster)
     }
 
     private static func ratings(for position: Position, rng: inout CatalogRNG) -> Ratings {
-        let base: (Int, Int, Int, Int) = switch position {
-        case .qb: (58, 70, 72, 84)
-        case .rb: (74, 86, 76, 68)
-        case .laneLeft, .laneRight: (54, 88, 70, 76)
-        case .laneCenter: (62, 82, 80, 84)
-        case .lt, .lg, .rg, .rt: (88, 48, 82, 45)
-        case .deL, .nt, .deR: (86, 58, 78, 52)
-        case .mlb, .olb: (76, 76, 78, 65)
-        case .cbL, .cbR: (54, 89, 74, 72)
-        case .fs, .ss: (65, 84, 76, 74)
-        }
+        let base: (Int, Int, Int, Int) =
+            switch position {
+            case .qb: (58, 70, 72, 84)
+            case .rb: (74, 86, 76, 68)
+            case .laneLeft, .laneRight: (54, 88, 70, 76)
+            case .laneCenter: (62, 82, 80, 84)
+            case .lt, .lg, .rg, .rt: (88, 48, 82, 45)
+            case .deL, .nt, .deR: (86, 58, 78, 52)
+            case .mlb, .olb: (76, 76, 78, 65)
+            case .cbL, .cbR: (54, 89, 74, 72)
+            case .fs, .ss: (65, 84, 76, 74)
+            }
         func varied(_ value: Int) -> Int { value + rng.next(13) - 6 }
         return Ratings(power: varied(base.0), speed: varied(base.1), endurance: varied(base.2), ability: varied(base.3))
     }
@@ -152,7 +157,8 @@ struct RootView: View {
                 case .teamSelect:
                     TeamSelectView(back: { screen = .title }) { team in
                         selectedTeam = team
-                        opponentTeam = TeamCatalog.teams.filter { $0.id != team.id }.randomElement() ?? TeamCatalog.teams[1]
+                        opponentTeam =
+                            TeamCatalog.teams.filter { $0.id != team.id }.randomElement() ?? TeamCatalog.teams[1]
                         session.startGame(home: selectedTeam, away: opponentTeam)
                         screen = .intro
                     }
@@ -194,26 +200,26 @@ struct RootView: View {
                 guard !handledAutoStart else { return }
                 handledAutoStart = true
                 #if DEBUG
-                switch UserDefaults.standard.string(forKey: "CBStoreScreen") {
-                case "teams":
-                    screen = .teamSelect
-                    return
-                case "roster":
-                    screen = .manageTeams
-                    return
-                case "plays":
-                    session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
-                    session.paused = true
-                    screen = .game
-                    return
-                case "action":
-                    session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
-                    session.autopilot = true
-                    screen = .game
-                    return
-                default:
-                    break
-                }
+                    switch UserDefaults.standard.string(forKey: "CBStoreScreen") {
+                    case "teams":
+                        screen = .teamSelect
+                        return
+                    case "roster":
+                        screen = .manageTeams
+                        return
+                    case "plays":
+                        session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
+                        session.paused = true
+                        screen = .game
+                        return
+                    case "action":
+                        session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
+                        session.autopilot = true
+                        screen = .game
+                        return
+                    default:
+                        break
+                    }
                 #endif
                 if UserDefaults.standard.bool(forKey: "CBAutoStart") {
                     session.startGame(home: selectedTeam, away: opponentTeam, showIntro: false)
@@ -226,9 +232,11 @@ struct RootView: View {
 
 private struct MenuBackdrop: View {
     var body: some View {
-        LinearGradient(colors: [.black.opacity(0.78), .black.opacity(0.25), .black.opacity(0.82)],
-                       startPoint: .top, endPoint: .bottom)
-            .ignoresSafeArea()
+        LinearGradient(
+            colors: [.black.opacity(0.78), .black.opacity(0.25), .black.opacity(0.82)],
+            startPoint: .top, endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
 }
 
@@ -294,7 +302,9 @@ private struct TeamSelectView: View {
                 MenuHeader(title: "CHOOSE YOUR TEAM", back: back)
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(TeamCatalog.teams) { team in
-                        Button { select(team) } label: {
+                        Button {
+                            select(team)
+                        } label: {
                             TeamTile(team: team)
                         }
                     }
@@ -342,17 +352,23 @@ private struct TeamManagementView: View {
                     ScrollView {
                         VStack(spacing: 6) {
                             ForEach(TeamCatalog.teams) { team in
-                                Button { selected = team } label: {
+                                Button {
+                                    selected = team
+                                } label: {
                                     HStack {
-                                        Text(team.abbreviation).font(.system(size: 16, weight: .black, design: .monospaced))
+                                        Text(team.abbreviation).font(
+                                            .system(size: 16, weight: .black, design: .monospaced))
                                         Text(team.name).font(.system(size: 12, weight: .bold, design: .monospaced))
                                         Spacer()
-                                        Text("\(team.overall)").font(.system(size: 12, weight: .black, design: .monospaced))
+                                        Text("\(team.overall)").font(
+                                            .system(size: 12, weight: .black, design: .monospaced))
                                     }
                                     .foregroundStyle(.white)
                                     .padding(10)
                                     .background(team.id == selected.id ? team.primaryColor : .black.opacity(0.55))
-                                    .overlay(Rectangle().stroke(team.secondaryColor.opacity(team.id == selected.id ? 1 : 0.35)))
+                                    .overlay(
+                                        Rectangle().stroke(
+                                            team.secondaryColor.opacity(team.id == selected.id ? 1 : 0.35)))
                                 }
                             }
                         }
@@ -447,7 +463,8 @@ private struct SettingsView: View {
                 MenuHeader(title: "SETTINGS", back: back)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("AUDIO").font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(.yellow)
+                        Text("AUDIO").font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(
+                            .yellow)
                         VolumeRow("MASTER", value: $masterVolume)
                         VolumeRow("MUSIC", value: $musicVolume)
                         VolumeRow("SFX", value: $sfxVolume)
@@ -458,7 +475,8 @@ private struct SettingsView: View {
                                 .foregroundStyle(.red)
                         }
                         Divider().background(.white.opacity(0.4))
-                        Text("VIDEO").font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(.yellow)
+                        Text("VIDEO").font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(
+                            .yellow)
                         Toggle("SHADOWS", isOn: $shadows)
                         Toggle("BLOOM", isOn: $bloom)
                         Toggle("DYNAMIC RESOLUTION", isOn: $dynamicResolution)
@@ -488,8 +506,9 @@ private struct SettingsView: View {
     }
 
     private func applyAudio() {
-        session.setAudio(master: Float(masterVolume), music: Float(musicVolume),
-                         sfx: Float(sfxVolume), crowd: Float(crowdVolume))
+        session.setAudio(
+            master: Float(masterVolume), music: Float(musicVolume),
+            sfx: Float(sfxVolume), crowd: Float(crowdVolume))
     }
 
     private func applyVideo() {
@@ -544,8 +563,9 @@ private struct MatchupIntroView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [.black.opacity(0.7), .clear, .black.opacity(0.8)],
-                           startPoint: .top, endPoint: .bottom)
+            LinearGradient(
+                colors: [.black.opacity(0.7), .clear, .black.opacity(0.8)],
+                startPoint: .top, endPoint: .bottom)
             VStack {
                 Text("TONIGHT'S MATCHUP")
                     .font(.system(size: 15, weight: .black, design: .monospaced))

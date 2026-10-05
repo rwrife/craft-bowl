@@ -20,9 +20,10 @@ public struct Ratings: Codable, Hashable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(power: try c.decode(Int.self, forKey: .power), speed: try c.decode(Int.self, forKey: .speed),
-                  endurance: try c.decode(Int.self, forKey: .endurance),
-                  ability: try c.decodeIfPresent(Int.self, forKey: .ability) ?? 60)
+        self.init(
+            power: try c.decode(Int.self, forKey: .power), speed: try c.decode(Int.self, forKey: .speed),
+            endurance: try c.decode(Int.self, forKey: .endurance),
+            ability: try c.decodeIfPresent(Int.self, forKey: .ability) ?? 60)
     }
 
     /// Normalized 0...1 helpers.
@@ -95,6 +96,18 @@ public struct RatingCurves: Codable, Sendable {
     public func playDrain(_ r: Ratings) -> Float { lerp(playDrainMin, playDrainMax, r.e) }
     public func regen(_ r: Ratings) -> Float { lerp(regenMin, regenMax, r.e) }
     public func turboCapacity(_ r: Ratings) -> Float { lerp(turboCapacityMin, turboCapacityMax, r.e) }
+}
+
+/// Roster strength on the same 1...99 scale as player ratings. Physical traits carry
+/// slightly more weight than endurance and ability for a fast, contact-heavy game.
+public enum TeamRating {
+    public static func overall(_ roster: [Ratings]) -> Int {
+        guard !roster.isEmpty else { return 0 }
+        let total = roster.reduce(0) { sum, player in
+            sum + 3 * player.power + 3 * player.speed + 2 * player.endurance + 2 * player.ability
+        }
+        return total / (roster.count * 10)
+    }
 }
 
 /// Lets `[Position: …]` dictionaries encode as JSON objects keyed by raw value.

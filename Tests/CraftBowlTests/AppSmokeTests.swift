@@ -1,3 +1,5 @@
+import CBAssets
+import CBSim
 import XCTest
 
 @testable import CraftBowl
@@ -14,5 +16,21 @@ final class AppSmokeTests: XCTestCase {
         XCTAssertEqual(hud.clock, "5:00")
         XCTAssertEqual(hud.downDistance, "1ST & 10")
         XCTAssertFalse(hud.runner)
+    }
+
+    func testTeamOverallUsesWeightedRosterRating() {
+        let roster = [
+            PlayerProfile(
+                id: .qb, name: "A", number: 1,
+                ratings: Ratings(power: 90, speed: 90, endurance: 10, ability: 10)),
+            PlayerProfile(
+                id: .rb, name: "B", number: 2,
+                ratings: Ratings(power: 90, speed: 90, endurance: 10, ability: 10)),
+        ]
+        let team = TeamDefinition(
+            id: "test", city: "Test", nickname: "Team", abbreviation: "TST",
+            uniform: .blue, roster: roster)
+        XCTAssertEqual(team.overall, 58)  // 60% physical traits, 40% other traits
+        XCTAssertEqual(team.overall, TeamRating.overall(roster.map(\.ratings)))
     }
 }
