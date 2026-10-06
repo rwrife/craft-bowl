@@ -50,6 +50,24 @@ public enum Position: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// QB throw velocity in yards/second at Power ratings 1 and 99.
+public struct QuarterbackArmCurve: Codable, Sendable {
+    public var min: Float
+    public var max: Float
+
+    public init(min: Float, max: Float) {
+        self.min = min
+        self.max = max
+    }
+
+    public static let `default` = QuarterbackArmCurve(min: 18, max: 26)
+
+    /// Tuning JSON is hot-reloadable in debug; bound flight speeds to avoid overflow or inverted trajectories.
+    public var isValid: Bool { min.isFinite && max.isFinite && min >= 10 && min <= max && max <= 60 }
+
+    public func speed(at p: Float) -> Float { lerp(min, max, p) }
+}
+
 /// Curves turning ratings into movement numbers. Loaded from `Tuning/ratings.json`.
 public struct RatingCurves: Codable, Sendable {
     /// Top speed in yards/second at speed rating 1 and 99.
@@ -80,6 +98,8 @@ public struct RatingCurves: Codable, Sendable {
     public var turboCapacityMax: Float
     public var turboRechargePerSecond: Float
     public var turboRechargeDelay: Float
+    /// Optional for compatibility with older tuning JSON; absent values use the default arm curve.
+    public var qbArm: QuarterbackArmCurve? = nil
 
     public static let `default` = RatingCurves(
         topSpeedMin: 6.5, topSpeedMax: 9.8, accelMin: 9, accelMax: 16,
@@ -89,6 +109,14 @@ public struct RatingCurves: Codable, Sendable {
         turboDrainMultiplier: 1.6, exhaustedAbilityFactor: 0.5,
         turboSpeedMultiplier: 1.22, turboCapacityMin: 1.4, turboCapacityMax: 2.6,
         turboRechargePerSecond: 0.35, turboRechargeDelay: 0.6)
+
+    /// Power controls QB arm strength; accuracy remains a separate fatigue-adjusted Ability trait.
+    /// A non-finite, non-positive or inverted tuning curve falls back to the default: tuning JSON is
+    /// hot-reloadable in debug and a bad `duration = distance/speed` would wedge ball flight.
+    public func quarterbackPassSpeed(_ r: Ratings) -> Float {
+        guard let arm = qbArm, arm.isValid else { return QuarterbackArmCurve.default.speed(at: r.p) }
+        return lerp(arm.min, arm.max, r.p)
+    }
 
     public func topSpeed(_ r: Ratings) -> Float { lerp(topSpeedMin, topSpeedMax, r.s) }
     public func acceleration(_ r: Ratings) -> Float { lerp(accelMin, accelMax, r.s) }
