@@ -79,7 +79,6 @@ public struct Match: Sendable {
     /// The opposing-possession recap stays up this long if the user never snaps the next play.
     public static let driveRecapTicks = 60 * 30
     public static let quarterSeconds: Float = 180
-    public static let passSpeed: Float = 22
 
     public private(set) var world: World
     public let playbook: Playbook
@@ -124,7 +123,7 @@ public struct Match: Sendable {
     /// QB buttons available right now (empty when the QB no longer has the ball behind the line).
     public var availableQBActions: [QBAction] {
         guard phase == .live, !runnerPhase, let c = world.ballCarrier, world[c].position == .qb,
-              world[c].location.y < lineOfScrimmage
+            world[c].location.y < lineOfScrimmage
         else { return [] }
         return offensePlay.qbActions
     }
@@ -155,9 +154,10 @@ public struct Match: Sendable {
     }
 
     public var playContext: PlayContext {
-        PlayContext(offense: offensePlay, defense: defensePlay, lineOfScrimmage: lineOfScrimmage,
-                    isLive: phase == .live, liveTicks: phase == .live ? phaseTicks : 0,
-                    controlled: controlled, runnerPhase: runnerPhase)
+        PlayContext(
+            offense: offensePlay, defense: defensePlay, lineOfScrimmage: lineOfScrimmage,
+            isLive: phase == .live, liveTicks: phase == .live ? phaseTicks : 0,
+            controlled: controlled, runnerPhase: runnerPhase)
     }
 
     public init(seed: UInt64, playbook: Playbook, format: TeamFormat = .nineOnNine, curves: RatingCurves = .default) {
@@ -179,8 +179,10 @@ public struct Match: Sendable {
         opponentName = trimmed.isEmpty ? "OPPONENT" : trimmed
     }
 
-    public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
-                                   defense: [Position: (ratings: Ratings, number: Int)]) {
+    public mutating func setRoster(
+        offense: [Position: (ratings: Ratings, number: Int)],
+        defense: [Position: (ratings: Ratings, number: Int)]
+    ) {
         for index in world.players.indices {
             let position = world.players[index].position
             let roster = position.side == .offense ? offense : defense
@@ -216,9 +218,13 @@ public struct Match: Sendable {
         let wasChosen = chosenChoice != nil
         if input.playSelect >= 0 && Int(input.playSelect) < n { choose(Int(input.playSelect)) }
         if !wasChosen {
-            if input.buttons.contains(.passLeft) { choose(0) }
-            else if input.buttons.contains(.passCenter) { choose(min(1, n - 1)) }
-            else if input.buttons.contains(.passRight) { choose(min(2, n - 1)) }
+            if input.buttons.contains(.passLeft) {
+                choose(0)
+            } else if input.buttons.contains(.passCenter) {
+                choose(min(1, n - 1))
+            } else if input.buttons.contains(.passRight) {
+                choose(min(2, n - 1))
+            }
         }
         if input.buttons.contains(.nextPlay) { choose(((chosenChoice ?? -1) + 1) % n) }
         if input.buttons.contains(.previousPlay) { choose(((chosenChoice ?? 0) + n - 1) % n) }
@@ -291,11 +297,15 @@ public struct Match: Sendable {
     private mutating func handleQBButtons(_ buttons: TickInput.Buttons) {
         let actions = availableQBActions
         guard !actions.isEmpty, let qbID = world.ballCarrier else { return }
-        if buttons.contains(.passLeft), actions.contains(.passLeft) { pass(to: .left, from: qbID) }
-        else if buttons.contains(.passCenter), actions.contains(.passCenter) { pass(to: .center, from: qbID) }
-        else if buttons.contains(.passRight), actions.contains(.passRight) { pass(to: .right, from: qbID) }
-        else if buttons.contains(.handoff), actions.contains(.handoff) || actions.contains(.toss),
-                let rb = world.player(at: .rb) {
+        if buttons.contains(.passLeft), actions.contains(.passLeft) {
+            pass(to: .left, from: qbID)
+        } else if buttons.contains(.passCenter), actions.contains(.passCenter) {
+            pass(to: .center, from: qbID)
+        } else if buttons.contains(.passRight), actions.contains(.passRight) {
+            pass(to: .right, from: qbID)
+        } else if buttons.contains(.handoff), actions.contains(.handoff) || actions.contains(.toss),
+            let rb = world.player(at: .rb)
+        {
             world.ball = .held(by: rb.id)
             controlled = rb.id
             runnerPhase = true
@@ -305,20 +315,24 @@ public struct Match: Sendable {
     private mutating func pass(to lane: Lane, from qbID: EntityID) {
         guard let r = world.player(at: lane.slotPosition) else { return }
         let qb = world[qbID]
+        let armSpeed = world.curves.quarterbackPassSpeed(qb.ratings)
         var aim = r.location
         for _ in 0..<2 {
-            let t = qb.location.distance(to: aim) / Match.passSpeed
+            let t = qb.location.distance(to: aim) / armSpeed
             aim = r.location + r.velocity * t
         }
-        let pressured = world.players.contains { $0.side == .defense && !$0.isDown && $0.location.distance(to: qb.location) < 2.5 }
+        let pressured = world.players.contains {
+            $0.side == .defense && !$0.isDown && $0.location.distance(to: qb.location) < 2.5
+        }
         // Accuracy: a tired or low-ability QB sprays the ball, more so on long throws and under pressure.
-        let spread = (1 - qb.ability(world.curves)) * (0.6 + qb.location.distance(to: aim) * 0.06)
+        let spread =
+            (1 - qb.ability(world.curves)) * (0.6 + qb.location.distance(to: aim) * 0.06)
             + (pressured ? 1.5 : 0)
         aim += Vec2(world.rng.unitFloat() * 2 - 1, world.rng.unitFloat() * 2 - 1) * spread
         aim.x = clamp(aim.x, -Field.halfWidth + 0.5, Field.halfWidth - 0.5)
         aim.y = clamp(aim.y, Field.wallMinY + 0.5, Field.wallMaxY - 0.5)
         let dist = qb.location.distance(to: aim)
-        world.throwBall(to: aim, target: r.id, speed: Match.passSpeed, peak: 0.6 + dist * 0.07)
+        world.throwBall(to: aim, target: r.id, speed: armSpeed, peak: 0.6 + dist * 0.07)
         // AI runs the receiver to the ball; the user takes over on the catch.
         controlled = nil
     }
@@ -387,8 +401,9 @@ public struct Match: Sendable {
             guard d.side == .defense, !d.isDown, d.recoverTicks == 0 else { continue }
             let reach: Float = d.isDiving ? 1.5 : 0.95
             guard d.location.distance(to: c.location) < reach else { continue }
-            let chance = clamp(0.72 + 0.35 * (d.ratings.p - c.ratings.p) - 0.25 * c.ratings.s * c.health
-                               + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
+            let chance = clamp(
+                0.72 + 0.35 * (d.ratings.p - c.ratings.p) - 0.25 * c.ratings.s * c.health
+                    + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
             if world.rng.unitFloat() < chance {
                 let sack = c.position == .qb && c.location.y < lineOfScrimmage
                 endPlay(sack ? .sack : .tackled, at: c.location)
@@ -430,7 +445,9 @@ public struct Match: Sendable {
             message = text ?? "INCOMPLETE"
             advanceDown(to: lineOfScrimmage)
         case .tackled, .outOfBounds, .dive, .sack:
-            let base = outcome == .sack ? "SACKED" : outcome == .outOfBounds ? "OUT OF BOUNDS" : outcome == .dive ? "DIVE!" : "TACKLED"
+            let base =
+                outcome == .sack
+                ? "SACKED" : outcome == .outOfBounds ? "OUT OF BOUNDS" : outcome == .dive ? "DIVE!" : "TACKLED"
             message = "\(base)  \(yards)"
             advanceDown(to: clamp(spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1))
         }
@@ -484,11 +501,11 @@ public struct Match: Sendable {
             let roll = world.rng.unitFloat()
             let gain: Float
             switch roll {
-            case ..<0.22: gain = 0                                                  // incompletion / stuff
-            case ..<0.34: gain = -Float(world.rng.nextUInt32() % 8) - 1             // loss or sack
-            case ..<0.80: gain = Float(world.rng.nextUInt32() % 9) + 1              // short gain
-            case ..<0.97: gain = Float(9 + world.rng.nextUInt32() % 13)             // chunk play
-            default: gain = Float(22 + world.rng.nextUInt32() % 30)                 // big play
+            case ..<0.22: gain = 0  // incompletion / stuff
+            case ..<0.34: gain = -Float(world.rng.nextUInt32() % 8) - 1  // loss or sack
+            case ..<0.80: gain = Float(world.rng.nextUInt32() % 9) + 1  // short gain
+            case ..<0.97: gain = Float(9 + world.rng.nextUInt32() % 13)  // chunk play
+            default: gain = Float(22 + world.rng.nextUInt32() % 30)  // big play
             }
             yard = clamp(yard + gain, 1, 100)
 
@@ -527,9 +544,10 @@ public struct Match: Sendable {
 
         let endYard = ending == .touchdown ? 100 : Int(yard.rounded())
         opponentDriveTicks = Match.driveRecapTicks
-        opponentDrive = OpponentDrive(team: opponentName, trigger: trigger, ending: ending,
-                                      plays: plays, yards: endYard - startYard, points: points,
-                                      seconds: seconds, startYard: startYard, endYard: endYard)
+        opponentDrive = OpponentDrive(
+            team: opponentName, trigger: trigger, ending: ending,
+            plays: plays, yards: endYard - startYard, points: points,
+            seconds: seconds, startYard: startYard, endYard: endYard)
     }
 
     private mutating func resetFormation() {
@@ -612,19 +630,20 @@ public struct Match: Sendable {
 
     static func ratings(for p: Position, rng: inout PCG32) -> Ratings {
         // (power, speed, endurance, ability)
-        let base: (Int, Int, Int, Int) = switch p {
-        case .qb: (55, 68, 65, 80)
-        case .rb: (72, 84, 70, 62)
-        case .laneLeft: (48, 92, 58, 72)
-        case .laneCenter: (58, 80, 78, 84)
-        case .laneRight: (50, 86, 68, 66)
-        case .lt, .lg, .rg, .rt: (90, 42, 75, 30)
-        case .deL, .nt, .deR: (86, 52, 70, 40)
-        case .mlb: (78, 72, 75, 55)
-        case .olb: (70, 78, 70, 55)
-        case .cbL, .cbR: (50, 88, 70, 62)
-        case .fs, .ss: (62, 82, 70, 66)
-        }
+        let base: (Int, Int, Int, Int) =
+            switch p {
+            case .qb: (55, 68, 65, 80)
+            case .rb: (72, 84, 70, 62)
+            case .laneLeft: (48, 92, 58, 72)
+            case .laneCenter: (58, 80, 78, 84)
+            case .laneRight: (50, 86, 68, 66)
+            case .lt, .lg, .rg, .rt: (90, 42, 75, 30)
+            case .deL, .nt, .deR: (86, 52, 70, 40)
+            case .mlb: (78, 72, 75, 55)
+            case .olb: (70, 78, 70, 55)
+            case .cbL, .cbR: (50, 88, 70, 62)
+            case .fs, .ss: (62, 82, 70, 66)
+            }
         func vary(_ v: Int) -> Int { v + Int(rng.nextUInt32() % 13) - 6 }
         return Ratings(power: vary(base.0), speed: vary(base.1), endurance: vary(base.2), ability: vary(base.3))
     }

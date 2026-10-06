@@ -17,5 +17,9 @@
   "turboCapacityMin": 1.4,
   "turboCapacityMax": 2.6,
   "turboRechargePerSecond": 0.35,
-  "turboRechargeDelay": 0.6
+  "turboRechargeDelay": 0.6,
+  "qbArm": {
+    "min": 18,
+    "max": 26
+  }
 }
