@@ -34,8 +34,10 @@ public struct PlayerState: Sendable {
     public var health: Float { stamina.health }
     public func ability(_ curves: RatingCurves) -> Float { stamina.ability(ratings: ratings, curves: curves) }
 
-    public init(id: EntityID, position: Position, ratings: Ratings, number: Int, location: Vec2,
-                curves: RatingCurves = .default) {
+    public init(
+        id: EntityID, position: Position, ratings: Ratings, number: Int, location: Vec2,
+        curves: RatingCurves = .default
+    ) {
         self.id = id
         self.position = position
         self.ratings = ratings
@@ -114,8 +116,10 @@ public struct World: Sendable {
     @discardableResult
     public mutating func spawn(_ position: Position, ratings: Ratings, number: Int, at location: Vec2) -> EntityID {
         let id = EntityID(UInt32(players.count))
-        players.append(PlayerState(id: id, position: position, ratings: ratings, number: number,
-                                   location: location, curves: curves))
+        players.append(
+            PlayerState(
+                id: id, position: position, ratings: ratings, number: number,
+                location: location, curves: curves))
         return id
     }
 
@@ -236,12 +240,23 @@ public struct World: Sendable {
         let desired = intent.move.length > 1 ? intent.move.normalized : intent.move
         let before = p.velocity.normalized
         let cutting = before != .zero && desired != .zero && (before * desired).sum() < 0.5
-        p.stamina.step(dt: dt, ratings: p.ratings, curves: curves, exerting: p.isExerting, carrying: carrying,
-                       cutting: cutting && p.velocity.length > 2, wantsTurbo: intent.turbo && !recovering)
+        // Limit steering while moving, but preserve instant starts and releases (braking).
+        var steered = desired
+        if p.velocity.length > 0.3 && desired != .zero {
+            let heading = atan2(before.x, before.y)
+            let wanted = atan2(desired.x, desired.y)
+            let difference = atan2(sin(wanted - heading), cos(wanted - heading))
+            let limit = curves.turnRate(p.ratings) * dt
+            let next = heading + clamp(difference, -limit, limit)
+            steered = Vec2(sin(next), cos(next)) * desired.length
+        }
+        p.stamina.step(
+            dt: dt, ratings: p.ratings, curves: curves, exerting: p.isExerting, carrying: carrying,
+            cutting: cutting && p.velocity.length > 2, wantsTurbo: intent.turbo && !recovering)
         var vmax = p.stamina.maxSpeed(ratings: p.ratings, curves: curves)
         if p.engagedTicks > 0 { vmax *= carrying ? 0.7 : 0.45 }
         if recovering { vmax *= 0.35 }
-        let target = desired * vmax
+        let target = steered * vmax
         let accel = curves.acceleration(p.ratings) * lerp(0.75, 1, p.health) * dt
         let delta = target - p.velocity
         p.velocity += delta.length > accel ? delta.normalized * accel : delta
