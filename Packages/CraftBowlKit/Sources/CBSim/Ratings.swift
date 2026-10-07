@@ -100,6 +100,18 @@ public struct RatingCurves: Codable, Sendable {
     public var turboRechargeDelay: Float
     /// Optional for compatibility with older tuning JSON; absent values use the default arm curve.
     public var qbArm: QuarterbackArmCurve? = nil
+    /// Speed-derived steering ceiling in radians/second. Optional for legacy tuning JSON.
+    public var turnRateMin: Float? = nil
+    public var turnRateMax: Float? = nil
+
+    public func turnRate(_ r: Ratings) -> Float {
+        let low = turnRateMin ?? 6
+        let high = turnRateMax ?? 10
+        guard low.isFinite, high.isFinite, low >= 0.1, low <= high, high <= 30 else {
+            return lerp(6, 10, r.s)
+        }
+        return lerp(low, high, r.s)
+    }
 
     public static let `default` = RatingCurves(
         topSpeedMin: 6.5, topSpeedMax: 9.8, accelMin: 9, accelMax: 16,
@@ -108,7 +120,8 @@ public struct RatingCurves: Codable, Sendable {
         playDrainMin: 0.2, playDrainMax: 0.09, regenMin: 0.022, regenMax: 0.055,
         turboDrainMultiplier: 1.6, exhaustedAbilityFactor: 0.5,
         turboSpeedMultiplier: 1.22, turboCapacityMin: 1.4, turboCapacityMax: 2.6,
-        turboRechargePerSecond: 0.35, turboRechargeDelay: 0.6)
+        turboRechargePerSecond: 0.35, turboRechargeDelay: 0.6,
+        turnRateMin: 6, turnRateMax: 10)
 
     /// Power controls QB arm strength; accuracy remains a separate fatigue-adjusted Ability trait.
     /// A non-finite, non-positive or inverted tuning curve falls back to the default: tuning JSON is

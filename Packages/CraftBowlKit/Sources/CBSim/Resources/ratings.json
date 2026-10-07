@@ -3,6 +3,8 @@
   "topSpeedMax": 9.8,
   "accelMin": 9,
   "accelMax": 16,
+  "turnRateMin": 6,
+  "turnRateMax": 10,
   "carryDrainMin": 0.06,
   "carryDrainMax": 0.025,
   "cutDrainMultiplier": 1.4,
