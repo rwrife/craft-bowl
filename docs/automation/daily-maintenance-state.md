@@ -14,10 +14,10 @@
 - Post-merge main [CI run 37589557961](https://github.com/rwrife/craft-bowl/actions/runs/37589557961) was in progress at state-sync preparation.
 - Blockers: no PR blockers; Linux cannot verify iOS runtime or device performance. Prior merged worktree `.worktrees/issue-24-qb-arm-speed` retains untracked `.verify` scratch; destructive cleanup was denied by cron approval policy, so it was not modified.
 
-## 2026-10-08 selection checkpoint
+## 2026-10-08 closeout
 
-- Timestamp: `2026-10-08T06:51:23Z`; mounted NFS, GitHub repository preflight passed. Base `680a5c0`; merged-main CI [37591912087](https://github.com/rwrife/craft-bowl/actions/runs/37591912087) succeeded.
-- Open PR snapshot: none; no PR merge or blocker. Open issue snapshot: #4–#59 (56 open, including roadmap #58 and standalone #59); #4/#5 remain runtime-evidence gated. #24 is dependency-safe and still lacks full derived-trait acceptance evidence.
-- Selected [#24](https://github.com/rwrife/craft-bowl/issues/24): one bounded rating-invariant slice: preserve the 1–99 contract after public mutation so contact weights and derived traits remain safe; issue remains open for other traits/acceptance audit. Dedicated branch/worktree `fix/issue-24-rating-bounds` at `.worktrees/issue-24-rating-bounds`. Existing #24 worktrees with untracked `.verify` retained untouched.
-- TDD: mutation bounds test failed on out-of-range values and overflow; live contact test with zero Power failed on NaN coordinates. After clamping on each public property assignment, local Swift 6.0.3 container sim-only mirror passed 16 XCTest cases (including the two new tests); `bash scripts/check-sim-rng.sh` passed (19 files). Swift strict format lint initially found 3 long lines, fixed before publishing.
-- Next: rerun all gates on frozen snapshot, independent review, then publish a partial PR. No local iOS, simulator, device, signing or release evidence.
+- Timestamp: `2026-10-08T08:00:12Z`. Repository: `rwrife/craft-bowl`; base: `680a5c0806d38ee021f9c43da3d3288a0c20c60e`.
+- Open PR snapshot: none.
+- Open issue snapshot: #4–#59 (56 open issues, including tracking #58 and standalone #59). #4/#5 runtime-gated; #24 remains open with remaining scope.
+- Actions taken: selected #24 for a bounded slice preserving the 1–99 ratings contract under public mutation. TDD test failed before implementation, passed with 16 XCTest in Swift 6.0 container mirror; RNG and format lints passed. Read-only independent snapshot review passed with zero blockers. PR [#73](https://github.com/rwrife/craft-bowl/pull/73) opened and passed hosted macOS [CI run 37744696433](https://github.com/rwrife/craft-bowl/actions/runs/37744696433) (package tests, shader compile, Swift/RNG lint, iOS Simulator app test and build). Squash-merged at `3f1bc52c86536989f1dfe1052173c09665d6dde8` at `2026-10-08T07:50:32Z`. Verified PR MERGED, branch deleted on origin, and #24 remains OPEN with [merge evidence](https://github.com/rwrife/craft-bowl/issues/24#issuecomment-6055399002).
+- Blockers: no PR blockers; Linux runner cannot run Apple native simulator/device/signing. Dedicated worktrees containing `.verify` scratch retained untouched. Post-merge main run [37745944325](https://github.com/rwrife/craft-bowl/actions/runs/37745944325) passed.
