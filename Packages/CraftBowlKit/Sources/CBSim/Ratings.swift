@@ -3,13 +3,13 @@ import CBCore
 /// The core ratings (1–99) that make each player feel different (docs/PLAN.md §5.5).
 public struct Ratings: Codable, Hashable, Sendable {
     /// Break tackles, win blocks, tackle strength.
-    public var power: Int
+    public var power: Int { didSet { power = clamp(power, 1, 99) } }
     /// Starting (fresh) top speed and acceleration.
-    public var speed: Int
+    public var speed: Int { didSet { speed = clamp(speed, 1, 99) } }
     /// How slowly health drains while in the play (speed held over time), recovery rate and turbo capacity.
-    public var endurance: Int
+    public var endurance: Int { didSet { endurance = clamp(endurance, 1, 99) } }
     /// Hands and athleticism: catching, jumping/diving reach, and QB throwing accuracy.
-    public var ability: Int
+    public var ability: Int { didSet { ability = clamp(ability, 1, 99) } }
 
     public init(power: Int, speed: Int, endurance: Int, ability: Int = 60) {
         self.power = clamp(power, 1, 99)
