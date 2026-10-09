@@ -275,7 +275,7 @@ public struct World: Sendable {
                 guard dist < minDist else { continue }
                 let normal = dist > 1e-4 ? d / dist : Vec2(1, 0)
                 let overlap = minDist - dist
-                let pa = Float(players[a].ratings.power), pb = Float(players[b].ratings.power)
+                let pa = curves.blockStrength(players[a].ratings), pb = curves.blockStrength(players[b].ratings)
                 let wa = pb / (pa + pb)
                 if !players[a].isDiving { players[a].location -= normal * overlap * wa }
                 if !players[b].isDiving { players[b].location += normal * overlap * (1 - wa) }

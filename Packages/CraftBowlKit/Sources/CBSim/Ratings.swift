@@ -103,6 +103,18 @@ public struct RatingCurves: Codable, Sendable {
     /// Speed-derived steering ceiling in radians/second. Optional for legacy tuning JSON.
     public var turnRateMin: Float? = nil
     public var turnRateMax: Float? = nil
+    /// Contact resistance at Power 1/99. Legacy tuning preserves raw Power weighting.
+    public var blockStrengthMin: Float? = nil
+    public var blockStrengthMax: Float? = nil
+
+    public func blockStrength(_ r: Ratings) -> Float {
+        let low = blockStrengthMin ?? 1
+        let high = blockStrengthMax ?? 99
+        guard low.isFinite, high.isFinite, low >= 1, low <= high, high <= 99 else {
+            return Float(r.power)
+        }
+        return lerp(low, high, r.p)
+    }
 
     public func turnRate(_ r: Ratings) -> Float {
         let low = turnRateMin ?? 6
@@ -121,7 +133,8 @@ public struct RatingCurves: Codable, Sendable {
         turboDrainMultiplier: 1.6, exhaustedAbilityFactor: 0.5,
         turboSpeedMultiplier: 1.22, turboCapacityMin: 1.4, turboCapacityMax: 2.6,
         turboRechargePerSecond: 0.35, turboRechargeDelay: 0.6,
-        turnRateMin: 6, turnRateMax: 10)
+        turnRateMin: 6, turnRateMax: 10,
+        blockStrengthMin: 1, blockStrengthMax: 99)
 
     /// Power controls QB arm strength; accuracy remains a separate fatigue-adjusted Ability trait.
     /// A non-finite, non-positive or inverted tuning curve falls back to the default: tuning JSON is

@@ -5,6 +5,8 @@
   "accelMax": 16,
   "turnRateMin": 6,
   "turnRateMax": 10,
+  "blockStrengthMin": 1,
+  "blockStrengthMax": 99,
   "carryDrainMin": 0.06,
   "carryDrainMax": 0.025,
   "cutDrainMultiplier": 1.4,

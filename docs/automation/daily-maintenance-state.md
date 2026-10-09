@@ -1,6 +1,18 @@
 # Daily maintenance state
 
-## Latest run
+## 2026-10-09 run
+
+- Timestamp: `2026-10-09T07:18:00Z` (PR candidate stage).
+- Repository: `rwrife/craft-bowl`; base `aefcbc0a2f0d075860f5bd273f13a526f9c0601c`. NFS mounted, access passed.
+- Open PR snapshot: none. Open issue snapshot: #4–#59 (56 issues).
+- Closure audit: #4/#5 remain runtime-evidence candidates; #6 needs Metal/device Instruments. #24 still lacks complete derived traits; no issue closed on code presence alone.
+- Selected issue: [#24](https://github.com/rwrife/craft-bowl/issues/24), bounded Power-derived block strength through live collision separation.
+- Branch/worktree: `feat/issue-24-contact-traits`, `.worktrees/issue-24-contact-traits`.
+- Actions: PR-first snapshot, main/source audit, dedicated worktree created. Added `RatingCurves.blockStrength`, bundled tuning `blockStrengthMin`/`blockStrengthMax`, wired into `World.resolveCollisions`, with tests for ratio separation, fallback for invalid/legacy tuning, and line invariants.
+- Verification: Docker Swift 6.0 package mirror passed 18 tests (2 new); `scripts/check-sim-rng.sh` passed on 19 files; `swift-format lint` clean. Independent snapshot review prepared.
+- Blockers: local Linux cannot run Xcode, Metal or device acceptance. Wider #24 remains open.
+
+## Prior run
 
 - Timestamp: `2026-10-07T06:46:46Z` (selection checkpoint).
 - Repository: `rwrife/craft-bowl`; base: `5817b82ae9326a0e884b55f51bd95039fe0945e7`. Repo NFS mounted; access preflight passed.
