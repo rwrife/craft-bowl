@@ -10,7 +10,11 @@
 - Branch/worktree: `feat/issue-24-contact-traits`, `.worktrees/issue-24-contact-traits`.
 - Actions: PR-first snapshot, main/source audit, dedicated worktree created. Added `RatingCurves.blockStrength`, bundled tuning `blockStrengthMin`/`blockStrengthMax`, wired into `World.resolveCollisions`, with tests for ratio separation, fallback for invalid/legacy tuning, and line invariants.
 - Verification: Docker Swift 6.0 package mirror passed 18 tests (2 new); `scripts/check-sim-rng.sh` passed on 19 files; `swift-format lint` clean. Independent snapshot review prepared.
-- Blockers: local Linux cannot run Xcode, Metal or device acceptance. Wider #24 remains open.
+- Closeout timestamp: `2026-10-09T07:42:44Z` (implementation merge).
+- PR: [#75](https://github.com/rwrife/craft-bowl/pull/75), head `aca0298ec68aa0ca0af726d0bf6c7880b900817f`. Independent read-only review PASS on complete staged tree `c5555c9fd05c1b1703b66b4a38cdcf2abd7bb4de` (patch SHA-256 `a062a20a6cce10f4a517aa8ecb5a8181fc2e725c9759f5acba6b087f7d15537f`). Hosted [CI 37899447786](https://github.com/rwrife/craft-bowl/actions/runs/37899447786) SUCCESS: macOS package tests, shader compile, Swift/RNG lint, iOS Simulator app tests and build. Squash-merged at `ea6a619a070a327e3d9db47798d01f279083c1ce`; verified MERGED and origin branch absent.
+- Issue: [#24](https://github.com/rwrife/craft-bowl/issues/24) verified OPEN; [merge evidence](https://github.com/rwrife/craft-bowl/issues/24#issuecomment-6076746188) records remaining tackle and position-trait audit. #58 remains unchecked. Final issue queue remains #4–#59 (56 open). No implementation PR remains open.
+- Main [CI 37900593365](https://github.com/rwrife/craft-bowl/actions/runs/37900593365) was in progress at state-sync preparation. This docs-only state-sync branch is `docs/issue-24-contact-closeout`.
+- Blockers: no implementation PR blockers. Local Linux cannot run Xcode, Metal or physical-device acceptance. Prior worktrees and the merged implementation worktree retain untracked `.verify` scratch; retained untouched after cron cleanup restrictions. Stopped verifier containers retained where automatic container deletion was denied. Wider #24 remains open.
 
 ## Prior run
 
