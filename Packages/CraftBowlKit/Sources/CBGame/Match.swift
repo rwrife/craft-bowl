@@ -401,8 +401,11 @@ public struct Match: Sendable {
             guard d.side == .defense, !d.isDown, d.recoverTicks == 0 else { continue }
             let reach: Float = d.isDiving ? 1.5 : 0.95
             guard d.location.distance(to: c.location) < reach else { continue }
+            // Tunable Power-derived tackle edge vs the carrier's contact resistance;
+            // the default 1...99 curve preserves the raw Power weighting.
+            let edge = (world.curves.tackleStrength(d.ratings) - world.curves.tackleStrength(c.ratings)) / 98
             let chance = clamp(
-                0.72 + 0.35 * (d.ratings.p - c.ratings.p) - 0.25 * c.ratings.s * c.health
+                0.72 + 0.35 * edge - 0.25 * c.ratings.s * c.health
                     + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
             if world.rng.unitFloat() < chance {
                 let sack = c.position == .qb && c.location.y < lineOfScrimmage
