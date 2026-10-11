@@ -1,5 +1,15 @@
 # Daily maintenance state
 
+## 2026-10-11 run
+
+- Timestamp: `2026-10-11T06:25:19Z`; base `3e03a83` on mounted NFS; GitHub preflight passed.
+- Open PR snapshot: none; no PRs reviewed or merged. Open issue snapshot: #4–#59 (56 open), including roadmap #58.
+- Closure audit: #4/#5 need interactive runtime acceptance; #6 needs Metal/device evidence; #24 still needs QB/WR position-specific tuning. Main [CI 38035351528](https://github.com/rwrife/craft-bowl/actions/runs/38035351528) succeeded, but #24 is not complete.
+- Selected [#24](https://github.com/rwrife/craft-bowl/issues/24): bounded QB accuracy tuning through live throw path. Branch `feat/issue-24-qb-accuracy` in `.worktrees/issue-24-qb-accuracy`; existing issue-24 worktrees retain untracked scratch and are untouched.
+- Actions: snapshot, audit and dedicated worktree created. Added optional bounded Ability-derived QB accuracy curve, bundled defaults and live pass aim wiring; fatigue and pressure remain separate modifiers. WR hands/full #24 audit remains out of scope.
+- Verification: Docker Swift 6.0.3 transitive-only SwiftPM mirror passed 23 XCTest (3 new); changed-file Swift format lint, RNG lint (19 files), and staged-diff check passed. Test-first compile failed on absent curve API; live-path mutation canary failed as intended (0.70123047-yard miss vs expected zero) when tuning was bypassed, then 23 tests passed after restoration. Local Apple/Metal build not run. Independent review and hosted CI pending.
+- Blockers: Linux cannot run local Xcode, Metal or physical-device acceptance.
+
 ## 2026-10-10 run
 
 - Timestamp: `2026-10-10T06:32:44Z` (selection checkpoint); base `94609d6`.

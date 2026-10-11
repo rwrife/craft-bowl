@@ -106,9 +106,19 @@ public struct RatingCurves: Codable, Sendable {
     /// Contact resistance at Power 1/99. Legacy tuning preserves raw Power weighting.
     public var blockStrengthMin: Float? = nil
     public var blockStrengthMax: Float? = nil
+    /// Fresh QB accuracy at Ability 1/99. Legacy tuning keeps raw Ability.
+    public var qbAccuracyMin: Float? = nil
+    public var qbAccuracyMax: Float? = nil
     /// Tackle strength edge at Power 1/99. Legacy tuning preserves raw Power weighting.
     public var tackleStrengthMin: Float? = nil
     public var tackleStrengthMax: Float? = nil
+
+    public func quarterbackAccuracy(_ r: Ratings) -> Float {
+        let low = qbAccuracyMin ?? 0
+        let high = qbAccuracyMax ?? 1
+        guard low.isFinite, high.isFinite, low >= 0, low <= high, high <= 1 else { return r.a }
+        return lerp(low, high, r.a)
+    }
 
     public func tackleStrength(_ r: Ratings) -> Float {
         let low = tackleStrengthMin ?? 1
@@ -147,6 +157,7 @@ public struct RatingCurves: Codable, Sendable {
         turboRechargePerSecond: 0.35, turboRechargeDelay: 0.6,
         turnRateMin: 6, turnRateMax: 10,
         blockStrengthMin: 1, blockStrengthMax: 99,
+        qbAccuracyMin: 0, qbAccuracyMax: 1,
         tackleStrengthMin: 1, tackleStrengthMax: 99)
 
     /// Power controls QB arm strength; accuracy remains a separate fatigue-adjusted Ability trait.
