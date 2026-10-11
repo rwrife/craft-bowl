@@ -9,6 +9,8 @@
   "blockStrengthMax": 99,
   "tackleStrengthMin": 1,
   "tackleStrengthMax": 99,
+  "qbAccuracyMin": 0,
+  "qbAccuracyMax": 1,
   "carryDrainMin": 0.06,
   "carryDrainMax": 0.025,
   "cutDrainMultiplier": 1.4,

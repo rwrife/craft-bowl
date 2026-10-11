@@ -325,8 +325,11 @@ public struct Match: Sendable {
             $0.side == .defense && !$0.isDown && $0.location.distance(to: qb.location) < 2.5
         }
         // Accuracy: a tired or low-ability QB sprays the ball, more so on long throws and under pressure.
+        let accuracy =
+            world.curves.quarterbackAccuracy(qb.ratings)
+            * lerp(world.curves.exhaustedAbilityFactor, 1, qb.health)
         let spread =
-            (1 - qb.ability(world.curves)) * (0.6 + qb.location.distance(to: aim) * 0.06)
+            (1 - accuracy) * (0.6 + qb.location.distance(to: aim) * 0.06)
             + (pressured ? 1.5 : 0)
         aim += Vec2(world.rng.unitFloat() * 2 - 1, world.rng.unitFloat() * 2 - 1) * spread
         aim.x = clamp(aim.x, -Field.halfWidth + 0.5, Field.halfWidth - 0.5)
