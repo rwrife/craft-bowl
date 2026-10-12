@@ -370,9 +370,9 @@ public struct Match: Sendable {
             return
         }
         if let target, !world[target].isDown {
-            // Ability (after fatigue) widens the catch radius and makes the hands surer; a nearby defender hurts.
+            // Receiver hands (Ability curve, after fatigue) widen the catch radius and make the hands surer; a nearby defender hurts.
             let r = world[target]
-            let ability = r.ability(world.curves)
+            let ability = world.curves.receiverHands(r.ratings) * lerp(world.curves.exhaustedAbilityFactor, 1, r.health)
             let reach: Float = (r.isDiving ? 0.6 : 0) + 1.2 + 0.9 * ability
             guard receiverDist < reach else { endPlay(.incomplete, at: spot); return }
             let contested = defender.map { $0.location.distance(to: spot) < 2.2 } ?? false
