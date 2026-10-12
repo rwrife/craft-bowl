@@ -1,5 +1,17 @@
 # Daily maintenance state
 
+## 2026-10-12 run
+
+- Timestamp: `2026-10-12T07:20:55Z`; base `f7ed0fd`; GitHub preflight passed.
+- Open PR snapshot: none; no PR reviewed/merged/blocked. Open issue snapshot: #4–#59 (56 open). Main CI [38119310300](https://github.com/rwrife/craft-bowl/actions/runs/38119310300) succeeded.
+- Closure audit: #4/#5 require interactive runtime evidence, #6 requires Metal/device evidence; #24 has rated core speed/endurance, team overall, QB arm/accuracy and contact traits, but receiver hands-specific tuning still missing. No issue closed.
+- Selected [#24](https://github.com/rwrife/craft-bowl/issues/24): bounded receiver hands curve in live catch path. Branch `feat/issue-24-receiver-hands`, worktree `.worktrees/issue-24-receiver-hands`. Existing worktrees retained untouched.
+- Actions: added optional bounded `receiverHandsMin`/`receiverHandsMax`, bundled defaults and fatigue-adjusted live catch wiring; legacy tuning preserves raw Ability. [PR #81](https://github.com/rwrife/craft-bowl/pull/81) opened on branch `feat/issue-24-receiver-hands` at implementation commit `723c90b`; #24 remains open pending full acceptance audit.
+- Verification: Docker Swift 6.0 platform-neutral mirror 25 XCTest passed; changed Swift `swift-format lint --strict` passed; `bash scripts/check-sim-rng.sh` passed on 19 files; staged-diff check passed. Live-path canary (bypassing curve) failed new seeded test as intended (42 vs 42), then restored tree passed. Independent read-only review PASS on complete staged patch SHA-256 `f550fd2c2fb5080226e3420b5980db386e650291cc62fe3de5196a53f193cefd`. Hosted CI on PR pending at this checkpoint.
+- Blockers: no PR blocker at snapshot; Linux lacks local Xcode/Metal/device acceptance. `.verify` scratch is untracked and retained outside PR.
+- Closeout `2026-10-12T10:53:58Z`: [PR #81](https://github.com/rwrife/craft-bowl/pull/81) squash-merged at `d788785666c0c2c4e7d8b8d74c523381ca4780a3` (state `MERGED` verified); implementation branch head `723c90b`. PR check `build` SUCCESS. Merged-main [CI 38234278687](https://github.com/rwrife/craft-bowl/actions/runs/38234278687) SUCCESS at exact merge SHA: CraftBowlKit macOS tests, Metal shader compilation, seeded RNG lint, iOS Simulator app tests and app build each succeeded; main-push changed-Swift lint step was skipped (PR-head lint passed). Local verification remains Docker-only, not native Apple or device/signing evidence.
+- [#24](https://github.com/rwrife/craft-bowl/issues/24) closed with [criterion-by-criterion merged-main audit](https://github.com/rwrife/craft-bowl/issues/24#issuecomment-6122833517); [roadmap #58](https://github.com/rwrife/craft-bowl/issues/58) checkbox checked and [sync comment](https://github.com/rwrife/craft-bowl/issues/58#issuecomment-6123288682) posted. Final queue: no open PRs, #24 CLOSED; remaining open issues #4–#59 excluding #24 (55). Implementation worktree retains ignored verification scratch, so no local worktree or remote topic branch deletion attempted; docs-only state-sync branch `docs/issue-24-final-state`. No PR blockers.
+
 ## 2026-10-11 run
 
 - Timestamp: `2026-10-11T06:25:19Z`; base `3e03a83` on mounted NFS; GitHub preflight passed.
