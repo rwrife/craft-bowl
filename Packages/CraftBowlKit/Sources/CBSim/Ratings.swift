@@ -112,6 +112,16 @@ public struct RatingCurves: Codable, Sendable {
     /// Tackle strength edge at Power 1/99. Legacy tuning preserves raw Power weighting.
     public var tackleStrengthMin: Float? = nil
     public var tackleStrengthMax: Float? = nil
+    /// Receiver hands edge at Ability 1/99. Legacy tuning preserves raw Ability.
+    public var receiverHandsMin: Float? = nil
+    public var receiverHandsMax: Float? = nil
+
+    public func receiverHands(_ r: Ratings) -> Float {
+        let low = receiverHandsMin ?? 0
+        let high = receiverHandsMax ?? 1
+        guard low.isFinite, high.isFinite, low >= 0, low <= high, high <= 1 else { return r.a }
+        return lerp(low, high, r.a)
+    }
 
     public func quarterbackAccuracy(_ r: Ratings) -> Float {
         let low = qbAccuracyMin ?? 0
@@ -158,7 +168,8 @@ public struct RatingCurves: Codable, Sendable {
         turnRateMin: 6, turnRateMax: 10,
         blockStrengthMin: 1, blockStrengthMax: 99,
         qbAccuracyMin: 0, qbAccuracyMax: 1,
-        tackleStrengthMin: 1, tackleStrengthMax: 99)
+        tackleStrengthMin: 1, tackleStrengthMax: 99,
+        receiverHandsMin: 0, receiverHandsMax: 1)
 
     /// Power controls QB arm strength; accuracy remains a separate fatigue-adjusted Ability trait.
     /// A non-finite, non-positive or inverted tuning curve falls back to the default: tuning JSON is
