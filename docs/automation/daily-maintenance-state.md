@@ -1,5 +1,15 @@
 # Daily maintenance state
 
+## 2026-10-13 run
+
+- Timestamp `2026-10-13T08:10:14Z`; base `a90d758` (origin/main, CI [38246011680](https://github.com/rwrife/craft-bowl/actions/runs/38246011680) SUCCESS). Preflight passed; write permissions admin.
+- Open PR snapshot: none (`gh pr list` empty). Open issue snapshot: 55 open (#4–#59 excluding closed #24), incl. roadmap #58.
+- Closure audit: #4/#5 remain interactive-runtime-gated; #6 Metal/device-gated; #55/#54 device-gated. No premature closure. #24 verified CLOSED (merged audit 2026-10-12).
+- Selected [#25 — Locomotion, steering and collision](https://github.com/rwrife/craft-bowl/issues/25): remaining acceptance criterion "Players never overlap". Defect found in `World.resolveCollisions`: diver-vs-standing pairs left residual overlap because the immovable diver only passes the Power-weighted fraction of the push; TDD canary failed `0.579 < 0.835` on `origin/main`.
+- Branch/worktree: `fix/issue-25-collision-overlap` at `.worktrees/issue-25-collision-overlap` (created 2026-10-13 from `origin/main`). Prior issue-24 worktrees untouched.
+- Staged slice: World.swift diver-push weight fix + `CollisionOverlapTests.swift` (6 focused tests). TDD: one regression RED (`0.579 < 0.835`) on base; after fix Docker swift:6.0 full platform-neutral suite 31/31 PASS; changed Swift `swift-format lint --strict` PASS; `scripts/check-sim-rng.sh` PASS (19 files); staged-diff check PASS. Read-only independent review of original staged code/tests PASS, zero blockers (patch SHA-256 `b2f4c86a2d1266b9a1167c6eea834e40c046999079d1a060fa5e51cd8a6a0ed7`). Reviewer flagged that dense piles are tested for eventual—not per-tick—separation; #25 must stay open. A reverse pair-order test and corrected test comments were added after review; final fresh read-only review PASS, zero blockers, zero non-blocking items on complete staged diff (prompt SHA-256 `f30547dfd09cb6ce0d4ca2d7105a9bf3fc35859cd298b25168d929adc32b9d62`). Hosted CI pending.
+- Blockers: none yet. Linux host: Xcode/Metal/iOS-sim lanes are CI-only.
+
 ## 2026-10-12 run
 
 - Timestamp: `2026-10-12T07:20:55Z`; base `f7ed0fd`; GitHub preflight passed.
