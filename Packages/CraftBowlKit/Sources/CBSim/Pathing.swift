@@ -10,6 +10,7 @@ public struct Arrive: Sendable {
     /// Distance under which steering starts to fade, in yards.
     public var radius: Float
     /// Distance under which steering is fully stopped; keeps a target from jittering at the center.
+    /// The bound is inclusive: `distance <= stopRadius` yields zero steering.
     public var stopRadius: Float
 
     public init(radius: Float = 1.5, stopRadius: Float = 0.25) {
@@ -24,7 +25,10 @@ public struct Arrive: Sendable {
 
     /// Same fade for a caller that already knows its heading (`Pursue` lead point, debug draw).
     public func steer(remaining distance: Float, direction: Vec2) -> Vec2 {
-        guard distance.isFinite, distance > max(stopRadius, 0) else { return .zero }
+        guard distance.isFinite, distance > max(stopRadius, 0),
+            direction.x.isFinite, direction.y.isFinite,
+            direction.length.isFinite, direction.length > 0
+        else { return .zero }
         // Non-positive or non-finite radius means "no easing": a full-speed step toward the target.
         let scale = radius > 0 && radius.isFinite ? min(1, distance / radius) : 1
         return direction.normalized * scale
@@ -96,7 +100,7 @@ public struct Avoid: Sendable {
                 }
             }
         }
-        return rotate(desired / speed, byDegrees: maxDeflection) * speed
+        return rotate(desired / speed, byDegrees: -maxDeflection) * speed
     }
 
     /// True when the projected segment keeps every threat outside `clearance`.

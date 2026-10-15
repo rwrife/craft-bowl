@@ -11,6 +11,9 @@ final class PathingHelperTests: XCTestCase {
         XCTAssertEqual(arrive.steer(from: Vec2(10, 49), to: Vec2(10, 50)), Vec2(0, 0.5))
         XCTAssertEqual(arrive.steer(from: Vec2(10, 49.5), to: Vec2(10, 50)), Vec2(0, 0.25))
         XCTAssertEqual(arrive.steer(from: Vec2(10, 50), to: Vec2(10, 50)), .zero)
+        XCTAssertEqual(arrive.steer(remaining: 1, direction: Vec2(.infinity, 0)), .zero)
+        XCTAssertEqual(arrive.steer(remaining: 1, direction: Vec2(.nan, 0)), .zero)
+        XCTAssertEqual(arrive.steer(remaining: 0.25, direction: Vec2(0, 1)), .zero)
     }
 
     /// A hostile slow radius must not invert or scale steering (tuning JSON is hot-reloadable).
@@ -42,12 +45,16 @@ final class PathingHelperTests: XCTestCase {
         let around = avoid.steer(from: Vec2(0, 40), desired: Vec2(0, 1), avoiding: [Vec2(0, 41)])
         XCTAssertGreaterThan(around.x, 0)
         XCTAssertEqual(around.length, 1, accuracy: 1e-6)
-        // Near blocker still lies inside the clearance corridor after a 45-degree turn;
-        // avoidance must actually clear the projected segment, not only change heading.
-        let near = avoid.steer(from: Vec2(0, 40), desired: Vec2(0, 1), avoiding: [Vec2(0, 40.9)])
+        let trapped = Avoid(clearance: 2, ahead: 2, maxDeflectionDegrees: 20)
+        let fallback = trapped.steer(from: Vec2(0, 40), desired: Vec2(0, 1), avoiding: [Vec2(0, 40.5)])
+        XCTAssertGreaterThan(fallback.x, 0)  // exhausted search must still choose right first
+        // Explicit clearance 0.8, blocker 0.9 away: clearance is geometrically possible.
+        // A 45-degree turn still clips the projected segment; require actual clearance.
+        let corridor = Avoid(clearance: 0.8, ahead: 2)
+        let near = corridor.steer(from: Vec2(0, 40), desired: Vec2(0, 1), avoiding: [Vec2(0, 40.9)])
         let along = max(0, min(2, (Vec2(0, 0.9) * near).sum()))
         let closest = Vec2(0, 0.9) - near * along
-        XCTAssertGreaterThanOrEqual(closest.length, avoid.clearance)
+        XCTAssertGreaterThanOrEqual(closest.length, corridor.clearance)
         // No blocker inside the lookahead corridor leaves the desired direction alone.
         XCTAssertEqual(avoid.steer(from: Vec2(0, 40), desired: Vec2(0, 1), avoiding: [Vec2(0, 50)]), Vec2(0, 1))
         // A blocker ahead and east pushes the steering west.
