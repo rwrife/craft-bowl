@@ -184,7 +184,6 @@ public struct World: Sendable {
             stepPlayer(i, intent: intent, carrying: players[i].id == carrier, dt: dt)
         }
         resolveCollisions()
-        applyWalls()
         stepBall(dt: dt)
         tick &+= 1
     }
@@ -265,27 +264,58 @@ public struct World: Sendable {
     }
 
     /// Circle separation between standing players. Opponents in contact become "engaged" (blocking).
+    /// Bounded relaxation reduces clipping in dense scrums while preserving predictable tick cost.
     private mutating func resolveCollisions() {
         let minDist = World.playerRadius * 2
         let n = players.count
-        for a in 0..<n where !players[a].isDown {
-            for b in (a + 1)..<n where !players[b].isDown {
-                let d = players[b].location - players[a].location
-                let dist = d.length
-                guard dist < minDist else { continue }
-                let normal = dist > 1e-4 ? d / dist : Vec2(1, 0)
-                let overlap = minDist - dist
-                let pa = curves.blockStrength(players[a].ratings), pb = curves.blockStrength(players[b].ratings)
-                // A diver cannot be displaced; give the full push to the standing player.
-                // Standing pairs retain Power-weighted separation.
-                let wa = players[b].isDiving ? Float(1) : players[a].isDiving ? Float(0) : pb / (pa + pb)
-                if !players[a].isDiving { players[a].location -= normal * overlap * wa }
-                if !players[b].isDiving { players[b].location += normal * overlap * (1 - wa) }
-                if players[a].side != players[b].side {
-                    players[a].engagedTicks = 8
-                    players[b].engagedTicks = 8
-                    events.append(.contact(players[a].id, players[b].id))
+        guard n > 1 else {
+            applyWalls()
+            return
+        }
+
+        // Track contacts per-pair to avoid duplicate events and multiple engagement updates.
+        var contactsReported: Set<UInt64> = []
+        let maxIterations = 24
+        for _ in 0..<maxIterations {
+            var maxOverlap: Float = 0
+            for a in 0..<n where !players[a].isDown {
+                for b in (a + 1)..<n where !players[b].isDown {
+                    let d = players[b].location - players[a].location
+                    let dist = d.length
+                    guard dist < minDist else { continue }
+                    maxOverlap = max(maxOverlap, minDist - dist)
+                    if players[a].side != players[b].side {
+                        let key = (UInt64(players[a].id.raw) << 32) | UInt64(players[b].id.raw)
+                        if contactsReported.insert(key).inserted {
+                            players[a].engagedTicks = 8
+                            players[b].engagedTicks = 8
+                            events.append(.contact(players[a].id, players[b].id))
+                        }
+                    }
+                    let normal = dist > 1e-4 ? d / dist : Vec2(1, 0)
+                    let overlap = minDist - dist
+                    let pa = curves.blockStrength(players[a].ratings), pb = curves.blockStrength(players[b].ratings)
+                    // A diver cannot be displaced; give the full push to the standing player.
+                    // Standing pairs retain Power-weighted separation.
+                    let wa = players[b].isDiving ? Float(1) : players[a].isDiving ? Float(0) : pb / (pa + pb)
+                    if !players[a].isDiving { players[a].location -= normal * overlap * wa }
+                    if !players[b].isDiving { players[b].location += normal * overlap * (1 - wa) }
                 }
+            }
+            applyWalls()
+            // One more scan when no overlap was seen: wall clamping can create new pairs.
+            if maxOverlap < 1e-5 {
+                var stillOverlapping = false
+                for a in 0..<n where !players[a].isDown {
+                    for b in (a + 1)..<n where !players[b].isDown {
+                        if players[a].location.distance(to: players[b].location) < minDist - 1e-5 {
+                            stillOverlapping = true
+                            break
+                        }
+                    }
+                    if stillOverlapping { break }
+                }
+                if !stillOverlapping { break }
             }
         }
     }
