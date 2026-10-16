@@ -46,6 +46,20 @@ final class CollisionOverlapTests: XCTestCase {
             world[other].location.distance(to: world[diver].location), minDist - slack)
     }
 
+    /// Dense piles must resolve within the current tick, not over several frames of clipping.
+    func testDensePileSeparatesOnFirstTick() {
+        var world = World(seed: 7)
+        let positions: [Position] = [.qb, .rb, .laneLeft, .laneCenter, .laneRight, .lt, .lg, .rg, .rt]
+        for (i, position) in positions.enumerated() {
+            let angle = Float(i) * 0.7
+            world.spawn(
+                position, ratings: Ratings(power: 10 + i * 10, speed: 50, endurance: 50),
+                number: i, at: Vec2(sin(angle) * 0.35, 40 + cos(angle) * 0.35))
+        }
+        world.step(intents: [:])
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+    }
+
     /// A pile of players stacked in a few square yards eventually resolves to a non-overlapping layout.
     func testDensePileResolvesWithoutOverlap() {
         var world = World(seed: 7)
@@ -58,6 +72,33 @@ final class CollisionOverlapTests: XCTestCase {
         }
         for _ in 0..<30 { world.step(intents: [:]) }
         XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+    }
+
+    /// Players initially apart can collide when both get clamped back from outside a wall.
+    func testWallClampCreatesOverlapThatMustResolve() {
+        var world = World(seed: 23)
+        let x = Field.wallHalfWidth - World.playerRadius
+        let rating = Ratings(power: 50, speed: 50, endurance: 50)
+        let a = world.spawn(.lt, ratings: rating, number: 1, at: Vec2(x + 1, 40))
+        let b = world.spawn(.deL, ratings: rating, number: 2, at: Vec2(x + 2, 40))
+        world.step(intents: [:])
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+        XCTAssertEqual(world.events.filter { $0 == .contact(a, b) }.count, 1)
+        XCTAssertTrue(world.players.allSatisfy { $0.location.x <= x + 1e-4 })
+    }
+
+    /// Collision relaxation must account for wall clamp within the same tick.
+    func testWallPileSeparatesOnFirstTick() {
+        var world = World(seed: 3)
+        let x = Field.wallHalfWidth - World.playerRadius
+        for i in 0..<4 {
+            world.spawn(
+                i % 2 == 0 ? .lt : .deL, ratings: Ratings(power: 30 + i * 20, speed: 60, endurance: 50),
+                number: i, at: Vec2(x - Float(i) * 0.2, 40 + Float(i) * 0.1))
+        }
+        world.step(intents: [:])
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+        XCTAssertTrue(world.players.allSatisfy { $0.location.x <= x + 1e-4 })
     }
 
     /// Pressing against the sideline wall must not squeeze players back into each other.
@@ -88,7 +129,40 @@ final class CollisionOverlapTests: XCTestCase {
         XCTAssertEqual(world.events.filter { $0 == .contact(a, b) }.count, 1)
     }
 
-    /// Resolution stays deterministic for identical inputs.
+    /// A pair pushed together by a different pair must still report contact once this tick.
+    func testContactCreatedDuringSeparationIsReportedOnce() {
+        var world = World(seed: 32)
+        let rating = Ratings(power: 50, speed: 50, endurance: 50)
+        world.spawn(.lt, ratings: rating, number: 1, at: Vec2(0, 40))
+        let blocker = world.spawn(.lg, ratings: rating, number: 2, at: Vec2(0.2, 40))
+        let defender = world.spawn(.deL, ratings: rating, number: 3, at: Vec2(1.1, 40))
+        world.step(intents: [:])
+        XCTAssertEqual(world.events.filter { $0 == .contact(blocker, defender) }.count, 1)
+        XCTAssertEqual(world[blocker].engagedTicks, 8)
+        XCTAssertEqual(world[defender].engagedTicks, 8)
+    }
+
+    /// Relaxation reduces remaining dense-pile overlap monotonically, even when the first tick cannot separate every wall pair.
+    func testDenseWallPileMonotonicallySeparates() {
+        var world = World(seed: 31)
+        let x = Field.wallHalfWidth - World.playerRadius
+        for i in 0..<5 {
+            world.spawn(
+                i % 2 == 0 ? .lt : .deL,
+                ratings: Ratings(power: 10 + i * 20, speed: 60, endurance: 50),
+                number: i, at: Vec2(x - Float(i) * 0.08, 40 + Float(i) * 0.04))
+        }
+        var previous = worstOverlap(world)
+        for _ in 0..<8 {
+            world.step(intents: [:])
+            let current = worstOverlap(world)
+            XCTAssertLessThanOrEqual(current, previous + slack)
+            previous = current
+        }
+        XCTAssertLessThanOrEqual(previous, slack)
+    }
+
+    /// Bounded collision relaxation must keep dense-pile resolution deterministic.
     func testResolutionIsDeterministic() {
         func run() -> UInt64 {
             var world = World(seed: 11)
