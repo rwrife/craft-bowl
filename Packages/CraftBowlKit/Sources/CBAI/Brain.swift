@@ -16,8 +16,10 @@ public struct PlayContext: Sendable {
     /// True once the ball has been handed off / caught / carried past the line: everyone pursues or blocks.
     public var runnerPhase: Bool
 
-    public init(offense: OffensivePlay, defense: DefensivePlay, lineOfScrimmage: Float, isLive: Bool,
-                liveTicks: Int, controlled: EntityID?, runnerPhase: Bool) {
+    public init(
+        offense: OffensivePlay, defense: DefensivePlay, lineOfScrimmage: Float, isLive: Bool,
+        liveTicks: Int, controlled: EntityID?, runnerPhase: Bool
+    ) {
         self.offense = offense
         self.defense = defense
         self.lineOfScrimmage = lineOfScrimmage
@@ -105,15 +107,25 @@ public struct SandboxBrain: PlayerBrain {
             } else {
                 intent = defenseIntent(p, world: world, context: context, carrier: carrier, flight: flight, qb: qb)
             }
-            out[p.id] = intent
+            var steered = intent
+            if intent.move.length > 0 {
+                let teammates = world.players.filter {
+                    $0.id != p.id && $0.side == p.side && !$0.isDown
+                        && $0.location.distance(to: p.location) > World.playerRadius * 2
+                }.map(\.location)
+                steered.move = Avoid().steer(from: p.location, desired: intent.move, avoiding: teammates)
+            }
+            out[p.id] = steered
         }
         return out
     }
 
     // MARK: Offense
 
-    private mutating func offenseIntent(_ p: PlayerState, world: World, context: PlayContext,
-                                        carrier: PlayerState?, flight: BallFlight?, qb: PlayerState?) -> PlayerIntent {
+    private mutating func offenseIntent(
+        _ p: PlayerState, world: World, context: PlayContext,
+        carrier: PlayerState?, flight: BallFlight?, qb: PlayerState?
+    ) -> PlayerIntent {
         let los = context.lineOfScrimmage
         if let flight, flight.target == p.id {
             return go(p, to: flight.to, arrive: 0.5)
@@ -126,8 +138,11 @@ public struct SandboxBrain: PlayerBrain {
                 if lane == .backfield && (slot.route == .handoff || slot.route == .toss) {
                     return go(p, to: Vec2(slot.route == .toss ? -3 : 0, los - 6.5), arrive: 1)
                 }
-                return go(p, to: routePoint(lane: lane, route: slot.route, start: p, los: los,
-                                            ticks: context.liveTicks), arrive: 1.5)
+                return go(
+                    p,
+                    to: routePoint(
+                        lane: lane, route: slot.route, start: p, los: los,
+                        ticks: context.liveTicks), arrive: 1.5)
             case .lead:
                 return go(p, to: Vec2(lane.centerX * 0.3, los + 1.5), arrive: 1)
             case .blocker, .fake:
@@ -179,8 +194,10 @@ public struct SandboxBrain: PlayerBrain {
 
     // MARK: Defense
 
-    private mutating func defenseIntent(_ p: PlayerState, world: World, context: PlayContext,
-                                        carrier: PlayerState?, flight: BallFlight?, qb: PlayerState?) -> PlayerIntent {
+    private mutating func defenseIntent(
+        _ p: PlayerState, world: World, context: PlayContext,
+        carrier: PlayerState?, flight: BallFlight?, qb: PlayerState?
+    ) -> PlayerIntent {
         let los = context.lineOfScrimmage
         if let flight {
             if p.location.distance(to: flight.to) < 12 { return go(p, to: flight.to, arrive: 0.3, turbo: true) }
@@ -200,7 +217,7 @@ public struct SandboxBrain: PlayerBrain {
             return pursue(p, carrier)
         case .man(let lane):
             guard let r = world.player(at: lane.slotPosition),
-                  context.offense.slots[lane]?.role == .target
+                context.offense.slots[lane]?.role == .target
             else { return zoneDrop(p, lane: lane, depth: 7, world: world, los: los) }
             return go(p, to: r.location + r.velocity * 0.25 + Vec2(0, 1.2), arrive: 0.5)
         case .zone(let lane):
@@ -210,7 +227,8 @@ public struct SandboxBrain: PlayerBrain {
         }
     }
 
-    private mutating func zoneDrop(_ p: PlayerState, lane: Lane, depth: Float, world: World, los: Float) -> PlayerIntent {
+    private mutating func zoneDrop(_ p: PlayerState, lane: Lane, depth: Float, world: World, los: Float) -> PlayerIntent
+    {
         let home = Vec2(lane.centerX, los + depth)
         var threat: PlayerState?
         for r in world.players where r.side == .offense && r.position.lane != nil {
@@ -235,12 +253,14 @@ public struct SandboxBrain: PlayerBrain {
         return intent
     }
 
-    private mutating func go(_ p: PlayerState, to target: Vec2, arrive: Float, turbo: Bool = false,
-                             scale: Float = 1) -> PlayerIntent {
+    private mutating func go(
+        _ p: PlayerState, to target: Vec2, arrive: Float, turbo: Bool = false,
+        scale: Float = 1
+    ) -> PlayerIntent {
         aimPoints[p.id] = target
-        let d = target - p.location
-        let len = d.length
-        guard len > 0.25 else { return PlayerIntent() }
-        return PlayerIntent(move: d / len * min(1, len / arrive) * scale, turbo: turbo)
+        let arriveHelper = Arrive(radius: arrive, stopRadius: 0.25)
+        let move = arriveHelper.steer(from: p.location, to: target) * scale
+        guard move.length > 0 else { return PlayerIntent() }
+        return PlayerIntent(move: move, turbo: turbo)
     }
 }
