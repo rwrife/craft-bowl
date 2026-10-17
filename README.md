@@ -69,6 +69,9 @@ You play offense (blue) against CPU defense (red). A turnover, touchdown, or saf
 
 Before each snap you get 3 random play cards with X's-and-O's diagrams. The play auto-snaps after 10 seconds.
 
+A subtle whistle sounds once when each on-field play ends, alongside cheers for big moments. It follows the
+master and SFX volume controls and stays silent in the title-screen attract demo.
+
 Every player has **health**. It drains quickly while the player is involved in a play (faster when carrying, cutting, or using turbo) and regenerates otherwise. Low health reduces speed and ability (catching, diving, QB accuracy). Stacked stat bars (speed / endurance / ability × health) float over the key players before the snap. During the play they show only over the ball carrier. Invisible walls keep players on the field and out of the stands.
 
 The dev overlay shows FPS, CPU/GPU pass timings, draw counts, the controlled-player inspector, and the input log. It has toggles for every render pass, camera presets, pause, ¼× speed, autopilot, and deterministic Record / Replay / Verify (replay confirms the world checksum). In Debug builds, edits to `ratings.json` hot-reload once per second.

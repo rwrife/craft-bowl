@@ -152,6 +152,9 @@ final class GameSession: RenderFrameSource {
             guard let crowdURL = Bundle.main.url(forResource: "Crowd", withExtension: "mp3") else {
                 throw CocoaError(.fileNoSuchFile)
             }
+            guard let whistleURL = Bundle.main.url(forResource: "Whistle", withExtension: "mp3") else {
+                throw CocoaError(.fileNoSuchFile)
+            }
             let cheerURLs = ["Cheer", "Cheer2", "Cheer3"].compactMap {
                 Bundle.main.url(forResource: $0, withExtension: "mp3")
             }
@@ -161,6 +164,7 @@ final class GameSession: RenderFrameSource {
             try audio.loadTitleMusic(from: titleURL)
             try audio.loadCrowdLoop(from: crowdURL)
             try audio.loadCheers(from: cheerURLs)
+            try audio.loadWhistle(from: whistleURL)
             func volume(_ key: String, fallback: Float) -> Float {
                 defaults.object(forKey: key) == nil ? fallback : defaults.float(forKey: key)
             }
@@ -188,8 +192,10 @@ final class GameSession: RenderFrameSource {
         }
     }
 
-    func startGame(home: TeamDefinition, away: TeamDefinition,
-                   seed: UInt64 = UInt64(Date().timeIntervalSince1970), showIntro: Bool = true) {
+    func startGame(
+        home: TeamDefinition, away: TeamDefinition,
+        seed: UInt64 = UInt64(Date().timeIntervalSince1970), showIntro: Bool = true
+    ) {
         homeTeam = home
         awayTeam = away
         sim = GameSimulation(seed: seed, playbook: playbook, format: format, curves: curves)
@@ -225,7 +231,8 @@ final class GameSession: RenderFrameSource {
         autopilot = true
         homeTeam = nil
         awayTeam = nil
-        sim = GameSimulation(seed: UInt64(Date().timeIntervalSince1970), playbook: playbook, format: format, curves: curves)
+        sim = GameSimulation(
+            seed: UInt64(Date().timeIntervalSince1970), playbook: playbook, format: format, curves: curves)
         clock = GameClock()
         resetSnapshots()
     }
@@ -304,17 +311,18 @@ final class GameSession: RenderFrameSource {
         let t0 = CACurrentMediaTime()
         for _ in 0..<steps { tick() }
         #if DEBUG
-        if UserDefaults.standard.string(forKey: "CBStoreScreen") == "action",
-           sim.match.phase == .live, sim.match.phaseTicks >= 50 {
-            paused = true
-        }
+            if UserDefaults.standard.string(forKey: "CBStoreScreen") == "action",
+                sim.match.phase == .live, sim.match.phaseTicks >= 50
+            {
+                paused = true
+            }
         #endif
         if steps > 0 { lastSimMs = Float((CACurrentMediaTime() - t0) * 1000) / Float(steps) }
         #if DEBUG
-        if let newCurves = tuning.poll() {
-            curves = newCurves
-            sim.setCurves(newCurves)
-        }
+            if let newCurves = tuning.poll() {
+                curves = newCurves
+                sim.setCurves(newCurves)
+            }
         #endif
 
         WorldSnapshot.interpolate(prev, cur, Float(clock.interpolationAlpha), into: &interp)
@@ -340,8 +348,9 @@ final class GameSession: RenderFrameSource {
         var ti: TickInput
         if var pb = playback {
             guard pb.cursor < pb.recording.inputs.count else {
-                replay = .verified(matches: sim.world.checksum == pb.recording.finalChecksum,
-                                   ticks: pb.recording.tickCount)
+                replay = .verified(
+                    matches: sim.world.checksum == pb.recording.finalChecksum,
+                    ticks: pb.recording.tickCount)
                 playback = nil
                 return
             }
@@ -356,15 +365,17 @@ final class GameSession: RenderFrameSource {
         }
         sim.tick(ti)
         let majorOutcomes: Set<PlayOutcome> = [.touchdown, .interception, .safety, .sack]
-        if presentation == .gameplay, phaseBeforeTick == .live, sim.match.phase == .dead,
-           sim.match.lastOutcome.map(majorOutcomes.contains) == true ||
-           sim.match.message.contains("FIRST DOWN") ||
-           sim.match.message.contains("TURNOVER ON DOWNS") {
-            audio.playCheer()
+        if presentation == .gameplay, phaseBeforeTick == .live, sim.match.phase == .dead {
+            audio.playWhistle()
+            if sim.match.lastOutcome.map(majorOutcomes.contains) == true || sim.match.message.contains("FIRST DOWN")
+                || sim.match.message.contains("TURNOVER ON DOWNS")
+            {
+                audio.playCheer()
+            }
         }
-        if case .recording = replay, recording != nil {
-            recording!.append(ti, resultingChecksum: sim.world.checksum)
-            if recording!.tickCount % 30 == 0 { replay = .recording(ticks: recording!.tickCount) }
+        if case .recording = replay {
+            recording?.append(ti, resultingChecksum: sim.world.checksum)
+            if let ticks = recording?.tickCount, ticks % 30 == 0 { replay = .recording(ticks: ticks) }
         }
         swap(&prev, &cur)
         cur.capture(sim.world)
@@ -419,10 +430,11 @@ final class GameSession: RenderFrameSource {
         for (i, p) in interp.players.enumerated() {
             let speed = p.velocity.length
             let offense = p.position.side == .offense
-            let lineman: Bool = switch p.position {
-            case .lt, .lg, .rg, .rt, .deL, .nt, .deR: true
-            default: false
-            }
+            let lineman: Bool =
+                switch p.position {
+                case .lt, .lg, .rg, .rt, .deL, .nt, .deR: true
+                default: false
+                }
             let pose: PlayerPose
             if p.isDown {
                 pose = .down
@@ -440,11 +452,12 @@ final class GameSession: RenderFrameSource {
             animPhase[i] += pose == .run ? dt * speed * 2.7 : dt * 3
             if animPhase[i] > 1000 { animPhase[i] -= 200 * .pi }
             let scale: SIMD3<Float> = lineman ? SIMD3(1.14, 1.0, 1.1) : SIMD3(1, 1, 1)
-            frame.players.append(PlayerDraw(
-                position: fieldToWorld(p.location), yaw: -p.facing, team: offense ? 0 : 1, pose: pose,
-                phase: animPhase[i], speed01: clamp(speed / 7, 0, 1), controlled: p.id == m.controlled,
-                turbo: p.turboActive && speed > 1, skinTone: UInt8((p.id.raw &* 7 &+ 3) % 12),
-                number: UInt8(clamping: p.number), scale: scale))
+            frame.players.append(
+                PlayerDraw(
+                    position: fieldToWorld(p.location), yaw: -p.facing, team: offense ? 0 : 1, pose: pose,
+                    phase: animPhase[i], speed01: clamp(speed / 7, 0, 1), controlled: p.id == m.controlled,
+                    turbo: p.turboActive && speed > 1, skinTone: UInt8((p.id.raw &* 7 &+ 3) % 12),
+                    number: UInt8(clamping: p.number), scale: scale))
         }
 
         // Ball: carried in the right hand, or on its flight arc.
@@ -579,12 +592,16 @@ final class GameSession: RenderFrameSource {
         cam.fovY = o.fov
     }
 
-    private func circle(_ lines: inout [DebugLine], _ c: Vec2, radius: Float, height: Float, _ color: SIMD4<Float>,
-                        segments: Int = 16) {
+    private func circle(
+        _ lines: inout [DebugLine], _ c: Vec2, radius: Float, height: Float, _ color: SIMD4<Float>,
+        segments: Int = 16
+    ) {
         for s in 0..<segments {
             let a0 = Float(s) / Float(segments) * 2 * .pi, a1 = Float(s + 1) / Float(segments) * 2 * .pi
-            lines.append(DebugLine(fieldToWorld(c + Vec2(cosf(a0), sinf(a0)) * radius, height: height),
-                                   fieldToWorld(c + Vec2(cosf(a1), sinf(a1)) * radius, height: height), color))
+            lines.append(
+                DebugLine(
+                    fieldToWorld(c + Vec2(cosf(a0), sinf(a0)) * radius, height: height),
+                    fieldToWorld(c + Vec2(cosf(a1), sinf(a1)) * radius, height: height), color))
         }
     }
 
@@ -606,7 +623,9 @@ final class GameSession: RenderFrameSource {
             guard let p = interp.players.first(where: { $0.position == position }) else { continue }
             let top = fieldToWorld(p.location, height: 2.75)
             let s: Float = 0.3
-            let pts = [top + SIMD3(0, s * 1.4, 0), top + SIMD3(s, 0, 0), top - SIMD3(0, s * 1.4, 0), top - SIMD3(s, 0, 0)]
+            let pts = [
+                top + SIMD3(0, s * 1.4, 0), top + SIMD3(s, 0, 0), top - SIMD3(0, s * 1.4, 0), top - SIMD3(s, 0, 0),
+            ]
             for k in 0..<4 { lines.append(DebugLine(pts[k], pts[(k + 1) % 4], color)) }
         }
     }
@@ -629,27 +648,35 @@ final class GameSession: RenderFrameSource {
         // Passing lanes
         let laneColor = SIMD4<Float>(0.2, 1, 1, 0.5)
         for x in [-Field.halfWidth, -Field.laneWidth / 2, Field.laneWidth / 2, Field.halfWidth] {
-            lines.append(DebugLine(fieldToWorld(Vec2(x, los - 10), height: 0.05),
-                                   fieldToWorld(Vec2(x, min(120, los + 45)), height: 0.05), laneColor))
+            lines.append(
+                DebugLine(
+                    fieldToWorld(Vec2(x, los - 10), height: 0.05),
+                    fieldToWorld(Vec2(x, min(120, los + 45)), height: 0.05), laneColor))
         }
         // Collision circles + velocity
         for p in interp.players {
             let color: SIMD4<Float> = p.position.side == .offense ? SIMD4(0.3, 0.5, 1, 0.8) : SIMD4(1, 0.3, 0.3, 0.8)
             circle(&lines, p.location, radius: World.playerRadius, height: 0.06, color, segments: 12)
             if p.velocity.length > 0.1 {
-                lines.append(DebugLine(fieldToWorld(p.location, height: 0.1),
-                                       fieldToWorld(p.location + p.velocity * 0.5, height: 0.1), SIMD4(1, 1, 1, 0.7)))
+                lines.append(
+                    DebugLine(
+                        fieldToWorld(p.location, height: 0.1),
+                        fieldToWorld(p.location + p.velocity * 0.5, height: 0.1), SIMD4(1, 1, 1, 0.7)))
             }
         }
         // AI aim points (routes, pursuit leads)
         for (id, aim) in sim.brain.aimPoints {
             guard let p = interp.players.first(where: { $0.id == id }) else { continue }
-            lines.append(DebugLine(fieldToWorld(p.location, height: 0.15), fieldToWorld(aim, height: 0.15),
-                                   SIMD4(1, 0.6, 0.1, 0.6)))
+            lines.append(
+                DebugLine(
+                    fieldToWorld(p.location, height: 0.15), fieldToWorld(aim, height: 0.15),
+                    SIMD4(1, 0.6, 0.1, 0.6)))
         }
         if let flight = m.world.ballFlight {
-            lines.append(DebugLine(fieldToWorld(flight.from, height: 0.1), fieldToWorld(flight.to, height: 0.1),
-                                   SIMD4(1, 1, 1, 0.9)))
+            lines.append(
+                DebugLine(
+                    fieldToWorld(flight.from, height: 0.1), fieldToWorld(flight.to, height: 0.1),
+                    SIMD4(1, 1, 1, 0.9)))
             circle(&lines, flight.to, radius: 1, height: 0.08, SIMD4(1, 1, 1, 0.9))
         }
     }
@@ -716,8 +743,9 @@ final class GameSession: RenderFrameSource {
             d.inspector = [
                 "#\(p.number) \(p.position.rawValue.uppercased())  P\(p.ratings.power) S\(p.ratings.speed) E\(p.ratings.endurance) A\(p.ratings.ability)",
                 String(format: "pos %.1f, %.1f  spd %.2f", p.location.x, p.location.y, p.velocity.length),
-                String(format: "health %.2f  turbo %.2f%@", p.stamina.health, p.stamina.turboFraction,
-                       p.stamina.isTurboActive ? " ON" : ""),
+                String(
+                    format: "health %.2f  turbo %.2f%@", p.stamina.health, p.stamina.turboFraction,
+                    p.stamina.isTurboActive ? " ON" : ""),
             ]
         }
         d.inspector.append("phase \(m.phase.rawValue)  ticks \(m.phaseTicks)  ball \(ballDescription(m.world.ball))")
@@ -773,7 +801,7 @@ final class TuningWatcher {
         guard let file = currentFile, file.date != lastModified else { return nil }
         lastModified = file.date
         guard let data = try? Data(contentsOf: file.url),
-              let curves = try? JSONDecoder().decode(RatingCurves.self, from: data)
+            let curves = try? JSONDecoder().decode(RatingCurves.self, from: data)
         else {
             print("CraftBowl tuning: failed to decode \(file.url.lastPathComponent)")
             return nil
