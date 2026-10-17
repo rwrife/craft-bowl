@@ -32,6 +32,8 @@ struct HUDState: Equatable {
     /// Recap of the last simulated opposing possession, shown as a modal dialog before play selection.
     var opponentDrive: OpponentDrive?
     var showDriveRecap = false
+    /// Whole seconds left on the play clock (nil when it isn't running, e.g. the untimed first snap of a half).
+    var playClock: Int?
     /// Both teams' final numbers once the game is over (nil while it's still being played).
     var gameOver: GameSummary?
 }
@@ -353,6 +355,7 @@ final class GameSession: RenderFrameSource {
     private func tick() {
         let phaseBeforeTick = sim.match.phase
         let overBeforeTick = sim.match.isGameOver
+        let penaltiesBeforeTick = sim.match.delayOfGamePenalties
         var ti: TickInput
         if var pb = playback {
             guard pb.cursor < pb.recording.inputs.count else {
@@ -382,6 +385,7 @@ final class GameSession: RenderFrameSource {
             }
         }
         if presentation == .gameplay, !overBeforeTick, sim.match.isGameOver { audio.playCheer() }
+        if presentation == .gameplay, sim.match.delayOfGamePenalties > penaltiesBeforeTick { audio.playWhistle() }
         if case .recording = replay {
             recording?.append(ti, resultingChecksum: sim.world.checksum)
             if let ticks = recording?.tickCount, ticks % 30 == 0 { replay = .recording(ticks: ticks) }
@@ -802,6 +806,7 @@ final class GameSession: RenderFrameSource {
         h.opponentDrive = m.opponentDrive
         h.showDriveRecap = m.isShowingDriveRecap
         h.gameOver = m.isGameOver ? m.gameSummary : nil
+        h.playClock = m.playClockRemaining.map { Int($0.rounded(.up)) }
         h.phase = m.phase
         h.playName = m.offensePlay.name.uppercased()
         h.defenseName = m.defensePlay.name.uppercased()

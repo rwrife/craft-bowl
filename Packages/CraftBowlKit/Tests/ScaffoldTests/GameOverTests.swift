@@ -40,7 +40,7 @@ final class GameOverTests: XCTestCase {
         XCTAssertEqual(summary.winner, .tie)
 
         // The final screen holds — no auto-snap, no score reset — and ignores an immediate button mash.
-        for _ in 0..<(Match.autoSnapTicks * 2) { sim.tick(.none) }
+        for _ in 0..<(Match.playClockTicks * 2) { sim.tick(.none) }
         XCTAssertTrue(sim.match.isGameOver)
         XCTAssertEqual(sim.match.gameSummary, summary)
         XCTAssertEqual(sim.match.quarter, 4)
