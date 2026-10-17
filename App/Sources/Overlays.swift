@@ -74,6 +74,7 @@ struct HUDView: View {
                 .padding(.bottom, 20)
             }
         }
+        .opacity(h.gameOver == nil ? 1 : 0)
         .allowsHitTesting(false)
     }
 }
@@ -174,6 +175,152 @@ struct DriveRecapDialog: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(teamColor.opacity(0.9), lineWidth: 2))
         .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
         .environment(\.colorScheme, .dark)
+    }
+}
+
+/// Final whistle: a translucent card beside the winners' celebration with the final score, who won and a
+/// side-by-side team box score. REMATCH goes through the sim's input (any button works on a controller);
+/// MAIN MENU leaves the game.
+struct GameOverDialog: View {
+    let session: GameSession
+    let mainMenu: () -> Void
+    @State private var appeared = false
+
+    var body: some View {
+        if let g = session.hud.gameOver {
+            ZStack(alignment: .trailing) {
+                LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .leading, endPoint: .trailing)
+                    .ignoresSafeArea()
+                card(g)
+                    .padding(.trailing, 40)
+                    .offset(x: appeared ? 0 : 80)
+                    .opacity(appeared ? 1 : 0)
+            }
+            .onAppear { withAnimation(.spring(duration: 0.5).delay(0.4)) { appeared = true } }
+            .onDisappear { appeared = false }
+        }
+    }
+
+    private func card(_ g: GameSummary) -> some View {
+        let homeName = session.homeTeam?.abbreviation ?? "BLUE"
+        let awayName = session.awayTeam?.abbreviation ?? "RED"
+        let homeColor = session.homeTeam?.primaryColor ?? homeBlue
+        let awayColor = session.awayTeam?.primaryColor ?? awayRed
+        let headline: String
+        let accent: Color
+        switch g.winner {
+        case .home:
+            headline = "\(session.homeTeam?.name.uppercased() ?? homeName) WIN!"
+            accent = homeColor
+        case .away:
+            headline = "\(session.awayTeam?.name.uppercased() ?? awayName) WIN!"
+            accent = awayColor
+        case .tie:
+            headline = "TIE GAME"
+            accent = .white.opacity(0.7)
+        }
+        let h = g.home, a = g.away
+        return VStack(spacing: 10) {
+            VStack(spacing: 2) {
+                Text("FINAL").font(.pixel(11, .bold)).foregroundStyle(.white.opacity(0.7))
+                Text(headline).font(.pixel(22, .black)).foregroundStyle(.yellow)
+                    .shadow(color: .black.opacity(0.7), radius: 0, x: 2, y: 2)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+
+            HStack(spacing: 0) {
+                scoreSide(homeName, g.homeScore, homeColor, won: g.winner == .home)
+                Text("–").font(.pixel(22, .black)).foregroundStyle(.white.opacity(0.6)).frame(width: 30)
+                scoreSide(awayName, g.awayScore, awayColor, won: g.winner == .away, trailing: true)
+            }
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text(homeName).foregroundStyle(homeColor.mix(with: .white, by: 0.35))
+                    Spacer()
+                    Text("TEAM STATS").foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Text(awayName).foregroundStyle(awayColor.mix(with: .white, by: 0.35))
+                }
+                .font(.pixel(9, .bold))
+                .padding(.bottom, 4)
+                compare("TOTAL YARDS", h.stats.netYards, a.stats.netYards)
+                compare("PASSING", "\(h.stats.completions)/\(h.stats.passAttempts)  \(h.stats.passYards)",
+                        "\(a.stats.completions)/\(a.stats.passAttempts)  \(a.stats.passYards)",
+                        better: winnerOf(h.stats.passYards, a.stats.passYards))
+                compare("RUSHING", "\(h.stats.rushAttempts)–\(h.stats.rushYards)",
+                        "\(a.stats.rushAttempts)–\(a.stats.rushYards)",
+                        better: winnerOf(h.stats.rushYards, a.stats.rushYards))
+                compare("TOUCHDOWNS", h.stats.passTouchdowns + h.stats.rushTouchdowns,
+                        a.stats.passTouchdowns + a.stats.rushTouchdowns)
+                compare("FIRST DOWNS", h.stats.firstDowns, a.stats.firstDowns)
+                compare("TURNOVERS", h.turnovers, a.turnovers, lowerIsBetter: true)
+                compare("SACKED", h.stats.sacks, a.stats.sacks, lowerIsBetter: true)
+                compare("LONGEST PLAY", h.stats.longestPlay, a.stats.longestPlay)
+                compare("POSSESSION", h.timeOfPossession, a.timeOfPossession,
+                        better: winnerOf(Int(h.seconds), Int(a.seconds)))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(.black.opacity(0.25), in: .rect(cornerRadius: 8))
+
+            HStack(spacing: 10) {
+                Button { session.input.send(.snap, from: .touch) } label: {
+                    Text("REMATCH").font(.pixel(13, .black)).frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(homeColor, in: .rect(cornerRadius: 8))
+                }
+                Button(action: mainMenu) {
+                    Text("MAIN MENU").font(.pixel(13, .black)).frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(.white.opacity(0.15), in: .rect(cornerRadius: 8))
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(width: 380)
+        .background(.ultraThinMaterial.opacity(0.9), in: .rect(cornerRadius: 16))
+        .background(panel.opacity(0.35), in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(accent.opacity(0.9), lineWidth: 2))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func scoreSide(_ name: String, _ score: Int, _ color: Color, won: Bool, trailing: Bool = false)
+        -> some View
+    {
+        HStack(spacing: 8) {
+            if trailing { Text("\(score)").font(.pixel(34, .black)).foregroundStyle(won ? .yellow : .white) }
+            Text(name).font(.pixel(14, .black)).padding(.horizontal, 10).padding(.vertical, 6)
+                .background(color, in: .rect(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(won ? .yellow : .clear, lineWidth: 2))
+            if !trailing { Text("\(score)").font(.pixel(34, .black)).foregroundStyle(won ? .yellow : .white) }
+        }
+        .frame(maxWidth: .infinity, alignment: trailing ? .leading : .trailing)
+    }
+
+    /// -1 home better, 1 away better, 0 even.
+    private func winnerOf(_ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> Int {
+        home == away ? 0 : ((home > away) != lowerIsBetter ? -1 : 1)
+    }
+
+    private func compare(_ label: String, _ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> some View {
+        compare(label, "\(home)", "\(away)", better: winnerOf(home, away, lowerIsBetter: lowerIsBetter))
+    }
+
+    private func compare(_ label: String, _ home: String, _ away: String, better: Int) -> some View {
+        HStack {
+            Text(home).font(.pixel(12, better < 0 ? .black : .semibold))
+                .foregroundStyle(better < 0 ? .yellow : .white.opacity(0.85))
+                .frame(width: 90, alignment: .leading)
+            Spacer(minLength: 0)
+            Text(label).font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+            Spacer(minLength: 0)
+            Text(away).font(.pixel(12, better > 0 ? .black : .semibold))
+                .foregroundStyle(better > 0 ? .yellow : .white.opacity(0.85))
+                .frame(width: 90, alignment: .trailing)
+        }
+        .lineLimit(1).minimumScaleFactor(0.7)
+        .padding(.vertical, 2.5)
     }
 }
 
@@ -369,7 +516,7 @@ struct TouchControls: View {
         HStack(alignment: .bottom) {
             VirtualStick { send(.move($0)) }
                 .padding(.leading, 40)
-                .opacity(h.showDriveRecap ? 0 : 1)
+                .opacity(h.showDriveRecap || h.gameOver != nil ? 0 : 1)
             Spacer()
             VStack(alignment: .trailing, spacing: 10) {
                 switch h.phase {

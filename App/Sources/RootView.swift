@@ -172,6 +172,10 @@ struct RootView: View {
                     HUDView(session: session)
                     TouchControls(session: session)
                     DriveRecapDialog(session: session)
+                    GameOverDialog(session: session) {
+                        session.enterAttractMode()
+                        screen = .title
+                    }
                     Button("MENU") {
                         session.enterAttractMode()
                         screen = .title
@@ -211,6 +215,12 @@ struct RootView: View {
                     case "plays":
                         session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
                         session.paused = true
+                        screen = .game
+                        return
+                    case "final":
+                        session.startGame(home: selectedTeam, away: opponentTeam, seed: 2026, showIntro: false)
+                        session.debugSetGameClock(quarter: 4, clock: 4)
+                        session.autopilot = true
                         screen = .game
                         return
                     case "action":

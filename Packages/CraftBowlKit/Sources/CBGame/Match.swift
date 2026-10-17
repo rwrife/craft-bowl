@@ -101,7 +101,9 @@ public struct OpponentDrive: Sendable, Equatable {
     public var fieldPositionText: String {
         "\(OpponentDrive.spot(startYard)) → \(ending == .touchdown ? "END ZONE" : OpponentDrive.spot(endYard))"
     }
-    public var resumeText: String { "YOUR BALL  \(OpponentDrive.spot(resumeYard))" }
+    public var resumeText: String {
+        ending == .endOfGame ? "THAT'S THE GAME" : "YOUR BALL  \(OpponentDrive.spot(resumeYard))"
+    }
 
     /// "OWN 25" / "MIDFIELD" / "OPP 30" from a 0–100 own-yard line.
     public static func spot(_ yard: Int) -> String {
@@ -122,6 +124,8 @@ public struct Match: Sendable {
     /// Opposing kickoffs/free kicks are fielded at the receiving team's own 25.
     public static let kickoffYardLine: Float = Field.ownGoalLine + 25
     public static let quarterSeconds: Float = 180
+    /// The final-score screen ignores buttons this long so the last play's button mash doesn't start a rematch.
+    public static let gameOverMinTicks = 90
 
     public private(set) var world: World
     public let playbook: Playbook
@@ -151,6 +155,11 @@ public struct Match: Sendable {
     public private(set) var opponentDrive: OpponentDrive?
     /// Name shown for the opposing team in drive recaps (set from the selected away team).
     public private(set) var opponentName = "OPPONENT"
+    /// Running box scores: the user's snaps, and every simulated opposing possession.
+    public private(set) var homeGame = TeamGameStats()
+    public private(set) var awayGame = TeamGameStats()
+    /// The final gun has sounded: the sim holds on the final-score screen until a button starts a rematch.
+    public private(set) var isGameOver = false
     public static let choicesPerDown = 3
     public typealias RosterEntry = (ratings: Ratings, number: Int)
 
@@ -160,6 +169,9 @@ public struct Match: Sendable {
     private var homeDefenseRoster: [Position: RosterEntry] = [:]
     /// Set on the headless copy that plays out an opposing drive, so it never recurses into another one.
     var isNestedSimulation = false
+    /// How the current snap is unfolding, for the user's box score.
+    private var playThrown = false
+    private var playCaught = false
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -168,6 +180,12 @@ public struct Match: Sendable {
     public var offensePlay: OffensivePlay { playbook.offense[offenseIndex] }
     public var defensePlay: DefensivePlay { playbook.defense[defenseIndex] }
     public var yardsToGo: Float { firstDownLine - lineOfScrimmage }
+    /// Both teams' final (or, mid-game, running) numbers.
+    public var gameSummary: GameSummary {
+        GameSummary(homeScore: homeScore, awayScore: awayScore, home: homeGame, away: awayGame)
+    }
+    /// 4th quarter with no time left: the game ends as soon as the current play / recap is done.
+    private var isFinalGun: Bool { quarter == 4 && clock <= 0 }
 
     /// The opposing-drive recap dialog is up: play selection waits until it's dismissed.
     public var isShowingDriveRecap: Bool { phase == .preSnap && opponentDrive != nil }
@@ -258,17 +276,61 @@ public struct Match: Sendable {
 
     public mutating func step(input: TickInput, ai: [EntityID: PlayerIntent]) {
         phaseTicks += 1
+        if isGameOver {
+            stepGameOver(input)
+            return
+        }
         if isShowingDriveRecap {
             opponentDriveTicks -= 1
             if opponentDriveTicks <= 0 { dismissDriveRecap() }
+            if isGameOver { return }
         }
         switch phase {
         case .preSnap: stepPreSnap(input)
         case .live: stepLive(input, ai: ai)
         case .dead:
             world.step(intents: [:])
-            if phaseTicks >= Match.deadBallTicks { resetFormation() }
+            guard phaseTicks >= Match.deadBallTicks else { break }
+            // A drive recap (e.g. the opponent ran out the clock) still gets shown before the final screen.
+            if isFinalGun && opponentDrive == nil { endGame() } else { resetFormation() }
         }
+    }
+
+    private mutating func stepGameOver(_ input: TickInput) {
+        world.step(intents: [:])
+        let pressed = !input.buttons.isEmpty || input.playSelect >= 0
+        if pressed && phaseTicks >= Match.gameOverMinTicks { startNewGame() }
+    }
+
+    private mutating func endGame() {
+        isGameOver = true
+        phase = .dead
+        phaseTicks = 0
+        opponentDrive = nil
+        opponentDriveTicks = 0
+        controlled = nil
+        runnerPhase = false
+        message = "FINAL"
+    }
+
+    /// Rematch: same teams, fresh score, clock and box scores; the user receives the opening kickoff.
+    public mutating func startNewGame() {
+        isGameOver = false
+        homeScore = 0
+        awayScore = 0
+        quarter = 1
+        clock = Match.quarterSeconds
+        homeGame = TeamGameStats()
+        awayGame = TeamGameStats()
+        opponentDrive = nil
+        opponentDriveTicks = 0
+        lastOutcome = nil
+        for i in world.players.indices {
+            world.players[i].stamina = Stamina(ratings: world.players[i].ratings, curves: world.curves)
+        }
+        message = ""
+        restartDrive()
+        resetFormation()
     }
 
     private mutating func stepPreSnap(_ input: TickInput) {
@@ -313,6 +375,7 @@ public struct Match: Sendable {
         opponentDriveTicks = 0
         phaseTicks = 0
         message = "SELECT PLAY"
+        if isFinalGun { endGame() }
     }
 
     private mutating func choose(_ i: Int) {
@@ -340,12 +403,16 @@ public struct Match: Sendable {
         phase = .live
         phaseTicks = 0
         runnerPhase = false
+        playThrown = false
+        playCaught = false
         message = ""
         playNumber += 1
     }
 
     private mutating func stepLive(_ input: TickInput, ai: [EntityID: PlayerIntent]) {
-        clock = max(0, clock - World.dt)
+        let used = min(clock, World.dt)
+        clock -= used
+        homeGame.seconds += used
         var intents = ai
         if let c = controlled {
             intents[c] = PlayerIntent(move: input.move, turbo: input.turbo, dive: input.buttons.contains(.dive))
@@ -411,6 +478,7 @@ public struct Match: Sendable {
         aim.y = clamp(aim.y, Field.wallMinY + 0.5, Field.wallMaxY - 0.5)
         let dist = qb.location.distance(to: aim)
         world.throwBall(to: aim, target: r.id, speed: armSpeed, peak: 0.6 + dist * 0.07)
+        playThrown = true
         // AI runs the receiver to the ball; the user takes over on the catch.
         controlled = nil
     }
@@ -459,6 +527,7 @@ public struct Match: Sendable {
             world.ball = .held(by: target)
             controlled = target
             runnerPhase = true
+            playCaught = true
             message = "CATCH!"
             return
         }
@@ -500,6 +569,7 @@ public struct Match: Sendable {
     // MARK: Whistle
 
     private mutating func endPlay(_ outcome: PlayOutcome, at spot: Vec2, text: String? = nil) {
+        recordHomePlay(outcome, at: spot)
         lastOutcome = outcome
         phase = .dead
         for i in world.players.indices { world.players[i].isExerting = false }
@@ -544,12 +614,14 @@ public struct Match: Sendable {
 
     private mutating func advanceDown(to spot: Float) {
         if spot >= firstDownLine {
+            homeGame.stats.firstDowns += 1
             nextLOS = spot
             nextDown = 1
             nextFirstDown = min(spot + 10, Field.goalLine)
             message += "  FIRST DOWN!"
         } else if down >= 4 {
             message += "  TURNOVER ON DOWNS"
+            homeGame.turnovers += 1
             restartDrive()
             simulateOpponentDrive(after: .downs, from: Match.mirrored(spot))
         } else {
@@ -565,6 +637,42 @@ public struct Match: Sendable {
         nextFirstDown = 45
     }
 
+    /// Adds the snap that just ended to the user's box score (same buckets as the simulated opposing drives).
+    private mutating func recordHomePlay(_ outcome: PlayOutcome, at spot: Vec2) {
+        let gain =
+            outcome == .touchdown
+            ? Int((Field.goalLine - lineOfScrimmage).rounded()) : Int((spot.y - lineOfScrimmage).rounded())
+        let qbBehindLine = world.ballCarrier.map { world[$0].position == .qb } == true && !runnerPhase
+        var s = homeGame.stats
+        switch outcome {
+        case .interception:
+            s.passAttempts += 1
+            s.interceptions += 1
+            homeGame.turnovers += 1
+        case .incomplete:
+            s.passAttempts += 1
+        case .sack:
+            s.sacks += 1
+            s.sackYards += max(0, -gain)
+        case .safety where !playCaught && qbBehindLine:
+            s.sacks += 1
+            s.sackYards += max(0, -gain)
+        case .touchdown, .tackled, .outOfBounds, .dive, .safety:
+            if playCaught {
+                s.passAttempts += 1
+                s.completions += 1
+                s.passYards += gain
+                if outcome == .touchdown { s.passTouchdowns += 1 }
+            } else {
+                s.rushAttempts += 1
+                s.rushYards += gain
+                if outcome == .touchdown { s.rushTouchdowns += 1 }
+            }
+            s.longestPlay = max(s.longestPlay, gain)
+        }
+        homeGame.stats = s
+    }
+
     /// Converts a field y between the two teams' points of view (the engine's offense always drives toward +y).
     static func mirrored(_ y: Float) -> Float { Field.length - y }
 
@@ -572,7 +680,7 @@ public struct Match: Sendable {
     /// user's defense, both run by the CPU), then hands the ball back to the user wherever the drive ended.
     /// - Parameter start: the opponent's line of scrimmage, in their own field coordinates.
     private mutating func simulateOpponentDrive(after trigger: OpponentDrive.Trigger, from start: Float) {
-        guard !isNestedSimulation else { return }
+        guard !isNestedSimulation, !isFinalGun else { return }
         let seed = UInt64(world.rng.nextUInt32()) << 32 | UInt64(world.rng.nextUInt32())
         var sim = OpponentDriveSimulator(
             seed: seed, playbook: playbook, format: format, curves: world.curves,
@@ -582,6 +690,9 @@ public struct Match: Sendable {
             scoreDelta: awayScore - homeScore)
         awayScore += result.opponentPoints
         homeScore += result.userPoints
+        awayGame.stats.add(result.drive.stats)
+        awayGame.seconds += result.drive.seconds
+        if result.drive.ending == .interception || result.drive.ending == .downs { awayGame.turnovers += 1 }
         quarter = result.quarter
         clock = result.clock
         nextLOS = result.userLineOfScrimmage
@@ -610,10 +721,13 @@ public struct Match: Sendable {
         endPlay(.tackled, at: spot)
     }
 
+    /// Jumps the game clock (tests drive late-game situations without playing a whole game).
+    mutating func setGameClock(quarter: Int, clock: Float) {
+        self.quarter = quarter
+        self.clock = clock
+    }
+
     private mutating func resetFormation() {
-        if quarter == 4 && clock <= 0 {
-            homeScore = 0; awayScore = 0; quarter = 1; clock = Match.quarterSeconds
-        }
         lineOfScrimmage = nextLOS
         down = nextDown
         firstDownLine = nextFirstDown
