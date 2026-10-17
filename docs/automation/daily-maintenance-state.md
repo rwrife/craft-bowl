@@ -2,12 +2,27 @@
 
 ## 2026-10-17 run
 
-- Timestamp: `2026-10-17T06:43:55Z`; `origin/main` `424a33b1454d8a028d579203b017991cf1ccc291`. GitHub preflight passed. PR snapshot: none. Issue snapshot: 55 open (#4–#23, #25–#59); #24 closed. Merged-main [CI 38910348250](https://github.com/rwrife/craft-bowl/actions/runs/38910348250) succeeded at this SHA.
-- Closure audit: #4/#5 require runtime evidence; #25 still lacks universal per-tick non-overlap and live AI pathing integration. [PR #87](https://github.com/rwrife/craft-bowl/pull/87) merged with `Advances #25`; no premature closure.
-- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25): bounded live AI steering integration. Branch `feat/issue-25-live-arrive`; worktree `.worktrees/issue-25-live-arrive` created clean from `origin/main`. Prior worktrees retained untouched.
-- Actions: PR-first snapshot, dependency and main CI audit, worktree created. Added `Arrive`-based live route steering and same-team `Avoid` pathing while keeping pursuit/dive logic unchanged. Four live-intent regression tests added (arrival, teammate deflection, moving-QB pursuit, defender dive preserved near teammate). Canary: without the `Avoid` wiring, the teammate-deflection test fails (`0.0` vs expected positive x).
-- Verification: Linux Docker Swift 6.0 platform-neutral mirror (`swift test -Xswiftc -warnings-as-errors`, mirror contains only the platform-neutral modules); LivePathingTests 4/4 pass. The full SwiftPM Linux test fails on pre-existing Apple-only `simd` import in `CBRender/Meshes.swift`, so only the mirror is viable locally. `bash scripts/check-sim-rng.sh` passed. Strict swift-format lint on changed Swift files. Apple CI pending (not local evidence).
-- Blockers: Linux lacks native Xcode/Metal/device runtime. No open PR blockers. #25 remains open for universal collision guarantee and broader AI pathing.
+- Timestamp: `2026-10-17T06:43:55Z` (start) / `2026-10-17T12:59:59Z` (closeout snapshot); base `424a33b1454d8a028d579203b017991cf1ccc291` -> implementation squash merge `57c2e909f2ff8055c8e6f8272527b8be5c17c69a` -> main CI [39029347247](https://github.com/rwrife/craft-bowl/actions/runs/39029347247) SUCCESS. GitHub preflight passed; write access verified.
+- Open PR snapshot at start: none. PR-first loop clear. Issue snapshot: 55 open (#4–#23, #25–#59); #24 closed.
+- Closure audit: #4/#5 require runtime/interactive evidence; #25 still lacks universal per-tick non-overlap and live AI pathing integration. [PR #87](https://github.com/rwrife/craft-bowl/pull/87) merged previously with `Advances #25`; no premature closure.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25): bounded live AI steering integration. Branch `feat/issue-25-live-arrive`; worktree `.worktrees/issue-25-live-arrive` created clean from `origin/main`.
+- Actions:
+  - Connected `Arrive` into `SandboxBrain.go(_:to:arrive:turbo:scale:)` so receiver route endpoints, lead blocks, coverage drops, and pursuit arrival ease into their targets.
+  - Connected `Avoid` across all non-zero live AI intents for active, non-down teammates outside contact radius while leaving raw pursuit, dive, and pass action decisions intact.
+  - Added four live-intent regression tests in `LivePathingTests` (arrival speed curve, stationary teammate avoidance without speed change, moving-QB lead pursuit, and preservation of defender dive intent near teammates).
+  - Explicit baseline canary: removing the `Avoid` step failed the teammate-deflection test (`0.0` vs expected positive x).
+  - Independent code review by Codex: PASS on exact staged tree `fed9a39965433773c44e84e22de3f7edf1a73431` (one non-blocking test coverage recommendation; zero blockers).
+  - Committed and pushed `f674965fcad3303d76fb8016f047629c3f2ca313`; opened [PR #88](https://github.com/rwrife/craft-bowl/pull/88).
+  - Enabled auto-merge; PR checks (`build`) passed in 8m8s; squash-merged at `57c2e909f2ff8055c8e6f8272527b8be5c17c69a` (2026-10-17T11:36:25Z); remote branch deleted.
+  - Main push CI run [39029347247](https://github.com/rwrife/craft-bowl/actions/runs/39029347247) succeeded on merge commit.
+  - Spurious auto-close remediation: GitHub's keyword parser auto-closed #25 because the PR body contained the negated phrase `does **not** close #25`. Reopened #25 immediately with evidence comment [6234028628](https://github.com/rwrife/craft-bowl/issues/25#issuecomment-6234028628) explaining completed slice vs remaining acceptance criteria. #25 remains OPEN.
+- Verification:
+  - Local Linux Docker Swift 6.0 platform-neutral mirror passed 48/48 unit tests with `-Xswiftc -warnings-as-errors` (`LivePathingTests` 4/4 passed).
+  - Note on local verification limitation: full SwiftPM test suite on Linux fails due to pre-existing Apple-only `simd` import in `CBRender/Meshes.swift`; platform-neutral transitive mirror is the only viable local test path.
+  - `bash scripts/check-sim-rng.sh` passed (20 files scanned).
+  - `swift-format lint --strict --configuration .swift-format` passed on modified and added Swift files.
+  - Apple CI passed for PR #88 and merged-main run 39029347247 (all steps through macOS host tests, shader compile, iOS Simulator test and build passed).
+- Blockers: Linux lacks native Xcode/Metal/device runtime. No open PR blockers. #25 remains OPEN for universal collision non-overlap guarantee under all scenarios and broader route tree navigation.
 
 ## 2026-10-16 run (selection checkpoint)
 
