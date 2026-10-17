@@ -250,11 +250,11 @@ struct TitleView: View {
         ZStack {
             MenuBackdrop()
             VStack(spacing: 14) {
-                Image("BlockBowlTitle")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 760, maxHeight: 190)
-                    .accessibilityLabel("Block Bowl")
+                // Oversized transparent canvas so the fly-in overshoot isn't clipped; negative padding keeps the layout tight.
+                TitleLogo3D()
+                    .frame(width: 440, height: 320)
+                    .padding(.vertical, -50)
+                    .allowsHitTesting(false)
                 MenuButton("KICKOFF", color: .blue, width: 480, action: play)
                 HStack(spacing: 14) {
                     MenuButton("MANAGE TEAMS", color: .orange, width: 233, action: manage)
