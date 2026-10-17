@@ -1,5 +1,14 @@
 # Daily maintenance state
 
+## 2026-10-17 run
+
+- Timestamp: `2026-10-17T06:43:55Z`; `origin/main` `424a33b1454d8a028d579203b017991cf1ccc291`. GitHub preflight passed. PR snapshot: none. Issue snapshot: 55 open (#4–#23, #25–#59); #24 closed. Merged-main [CI 38910348250](https://github.com/rwrife/craft-bowl/actions/runs/38910348250) succeeded at this SHA.
+- Closure audit: #4/#5 require runtime evidence; #25 still lacks universal per-tick non-overlap and live AI pathing integration. [PR #87](https://github.com/rwrife/craft-bowl/pull/87) merged with `Advances #25`; no premature closure.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25): bounded live AI steering integration. Branch `feat/issue-25-live-arrive`; worktree `.worktrees/issue-25-live-arrive` created clean from `origin/main`. Prior worktrees retained untouched.
+- Actions: PR-first snapshot, dependency and main CI audit, worktree created. Added `Arrive`-based live route steering and same-team `Avoid` pathing while keeping pursuit/dive logic unchanged. Four live-intent regression tests added (arrival, teammate deflection, moving-QB pursuit, defender dive preserved near teammate). Canary: without the `Avoid` wiring, the teammate-deflection test fails (`0.0` vs expected positive x).
+- Verification: Linux Docker Swift 6.0 platform-neutral mirror (`swift test -Xswiftc -warnings-as-errors`, mirror contains only the platform-neutral modules); LivePathingTests 4/4 pass. The full SwiftPM Linux test fails on pre-existing Apple-only `simd` import in `CBRender/Meshes.swift`, so only the mirror is viable locally. `bash scripts/check-sim-rng.sh` passed. Strict swift-format lint on changed Swift files. Apple CI pending (not local evidence).
+- Blockers: Linux lacks native Xcode/Metal/device runtime. No open PR blockers. #25 remains open for universal collision guarantee and broader AI pathing.
+
 ## 2026-10-16 run (selection checkpoint)
 
 - Timestamp: `2026-10-16T07:10:50Z`; base `908afd0790182e476658978e158600964576e199` with [main CI 38702522624](https://github.com/rwrife/craft-bowl/actions/runs/38702522624) SUCCESS. GitHub access passed.
