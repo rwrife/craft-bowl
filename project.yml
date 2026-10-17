@@ -34,6 +34,8 @@ targets:
         buildPhase: resources
       - path: App/Cheer3.mp3
         buildPhase: resources
+      - path: App/Whistle.mp3
+        buildPhase: resources
       - path: App/TitleMusic.mp3
         buildPhase: resources
     dependencies:
