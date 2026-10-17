@@ -23,14 +23,14 @@ public struct OpponentDrive: Sendable, Equatable {
             case .touchdown: "AFTER KICKOFF"
             case .interception: "AFTER INTERCEPTION"
             case .downs: "AFTER TURNOVER ON DOWNS"
-            case .safety: "AFTER SAFETY"
+            case .safety: "AFTER SAFETY KICK"
             }
         }
     }
 
     /// How the possession finished.
     public enum Ending: String, Sendable, Equatable {
-        case touchdown, fieldGoal, missedFieldGoal, punt, downs, turnover, clockExpired
+        case touchdown, fieldGoal, missedFieldGoal, punt, downs, interception, safety, endOfHalf, endOfGame
 
         public var text: String {
             switch self {
@@ -39,8 +39,18 @@ public struct OpponentDrive: Sendable, Equatable {
             case .missedFieldGoal: "MISSED FIELD GOAL"
             case .punt: "PUNT"
             case .downs: "TURNOVER ON DOWNS"
-            case .turnover: "TURNOVER"
-            case .clockExpired: "END OF QUARTER"
+            case .interception: "INTERCEPTED"
+            case .safety: "SAFETY"
+            case .endOfHalf: "END OF HALF"
+            case .endOfGame: "END OF GAME"
+            }
+        }
+
+        /// The defense (the user) got the ball back without the opponent scoring.
+        public var isStop: Bool {
+            switch self {
+            case .punt, .downs, .interception, .missedFieldGoal, .safety: true
+            default: false
             }
         }
     }
@@ -50,23 +60,52 @@ public struct OpponentDrive: Sendable, Equatable {
     public let ending: Ending
     public let plays: Int
     public let yards: Int
+    /// Points the opposing team scored on the drive.
     public let points: Int
     public let seconds: Float
     /// Where the drive started and finished, as the opposing team's own yard line (0–100).
     public let startYard: Int
     public let endYard: Int
+    /// Passing / rushing box score built from the simulated plays.
+    public let stats: DriveStats
+    /// One line per snap / kick, oldest first.
+    public let playByPlay: [String]
+    /// The user's own yard line (0–100) where their next possession starts.
+    public let resumeYard: Int
+
+    public init(
+        team: String, trigger: Trigger, ending: Ending, plays: Int, yards: Int, points: Int, seconds: Float,
+        startYard: Int, endYard: Int, stats: DriveStats = DriveStats(), playByPlay: [String] = [],
+        resumeYard: Int = 25
+    ) {
+        self.team = team
+        self.trigger = trigger
+        self.ending = ending
+        self.plays = plays
+        self.yards = yards
+        self.points = points
+        self.seconds = seconds
+        self.startYard = startYard
+        self.endYard = endYard
+        self.stats = stats
+        self.playByPlay = playByPlay
+        self.resumeYard = resumeYard
+    }
 
     public var headline: String { "\(team) DRIVE" }
     public var timeOfPossession: String {
         let s = Int(seconds.rounded())
         return String(format: "%d:%02d", s / 60, s % 60)
     }
-    public var resultText: String { points > 0 ? "\(ending.text)  (+\(points))" : ending.text }
+    public var resultText: String { points > 0 ? "\(ending.text)  +\(points)" : ending.text }
     public var fieldPositionText: String {
-        func spot(_ yard: Int) -> String {
-            yard == 50 ? "MIDFIELD" : (yard < 50 ? "OWN \(yard)" : "OPP \(100 - yard)")
-        }
-        return "\(spot(startYard)) → \(spot(endYard))"
+        "\(OpponentDrive.spot(startYard)) → \(ending == .touchdown ? "END ZONE" : OpponentDrive.spot(endYard))"
+    }
+    public var resumeText: String { "YOUR BALL  \(OpponentDrive.spot(resumeYard))" }
+
+    /// "OWN 25" / "MIDFIELD" / "OPP 30" from a 0–100 own-yard line.
+    public static func spot(_ yard: Int) -> String {
+        yard == 50 ? "MIDFIELD" : (yard < 50 ? "OWN \(yard)" : "OPP \(100 - yard)")
     }
 }
 
@@ -76,8 +115,12 @@ public struct Match: Sendable {
     public static let ticksPerSecond = Int(GameClock.ticksPerSecond)
     public static let autoSnapTicks = 60 * 10
     public static let deadBallTicks = 150
-    /// The opposing-possession recap stays up this long if the user never snaps the next play.
+    /// The opposing-possession recap stays up this long (pre-snap) if the user never dismisses it.
     public static let driveRecapTicks = 60 * 30
+    /// The recap ignores buttons for this long so a late button mash doesn't skip it.
+    public static let driveRecapMinTicks = 30
+    /// Opposing kickoffs/free kicks are fielded at the receiving team's own 25.
+    public static let kickoffYardLine: Float = Field.ownGoalLine + 25
     public static let quarterSeconds: Float = 180
 
     public private(set) var world: World
@@ -109,8 +152,14 @@ public struct Match: Sendable {
     /// Name shown for the opposing team in drive recaps (set from the selected away team).
     public private(set) var opponentName = "OPPONENT"
     public static let choicesPerDown = 3
+    public typealias RosterEntry = (ratings: Ratings, number: Int)
 
     private var opponentDriveTicks = 0
+    /// Rosters for the simulated opposing possession: their offense against the user's defense.
+    private var opponentOffenseRoster: [Position: RosterEntry] = [:]
+    private var homeDefenseRoster: [Position: RosterEntry] = [:]
+    /// Set on the headless copy that plays out an opposing drive, so it never recurses into another one.
+    var isNestedSimulation = false
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -119,6 +168,11 @@ public struct Match: Sendable {
     public var offensePlay: OffensivePlay { playbook.offense[offenseIndex] }
     public var defensePlay: DefensivePlay { playbook.defense[defenseIndex] }
     public var yardsToGo: Float { firstDownLine - lineOfScrimmage }
+
+    /// The opposing-drive recap dialog is up: play selection waits until it's dismissed.
+    public var isShowingDriveRecap: Bool { phase == .preSnap && opponentDrive != nil }
+    /// Pre-snap ticks the current recap has been on screen.
+    public var driveRecapElapsedTicks: Int { opponentDrive == nil ? 0 : Match.driveRecapTicks - opponentDriveTicks }
 
     /// QB buttons available right now (empty when the QB no longer has the ball behind the line).
     public var availableQBActions: [QBAction] {
@@ -179,10 +233,17 @@ public struct Match: Sendable {
         opponentName = trimmed.isEmpty ? "OPPONENT" : trimmed
     }
 
+    /// - Parameters:
+    ///   - offense/defense: the players on the field (user offense vs opposing defense).
+    ///   - opponentOffense/homeDefense: who plays when the opposing possession is simulated.
     public mutating func setRoster(
-        offense: [Position: (ratings: Ratings, number: Int)],
-        defense: [Position: (ratings: Ratings, number: Int)]
+        offense: [Position: RosterEntry],
+        defense: [Position: RosterEntry],
+        opponentOffense: [Position: RosterEntry] = [:],
+        homeDefense: [Position: RosterEntry] = [:]
     ) {
+        opponentOffenseRoster = opponentOffense
+        homeDefenseRoster = homeDefense
         for index in world.players.indices {
             let position = world.players[index].position
             let roster = position.side == .offense ? offense : defense
@@ -197,9 +258,9 @@ public struct Match: Sendable {
 
     public mutating func step(input: TickInput, ai: [EntityID: PlayerIntent]) {
         phaseTicks += 1
-        if opponentDrive != nil {
+        if isShowingDriveRecap {
             opponentDriveTicks -= 1
-            if opponentDriveTicks <= 0 { opponentDrive = nil }
+            if opponentDriveTicks <= 0 { dismissDriveRecap() }
         }
         switch phase {
         case .preSnap: stepPreSnap(input)
@@ -212,6 +273,13 @@ public struct Match: Sendable {
 
     private mutating func stepPreSnap(_ input: TickInput) {
         world.step(intents: [:])
+        if opponentDrive != nil {
+            // The recap is modal: the play clock waits and the first button press only closes it.
+            phaseTicks = 0
+            let pressed = !input.buttons.isEmpty || input.playSelect >= 0
+            if pressed && driveRecapElapsedTicks >= Match.driveRecapMinTicks { dismissDriveRecap() }
+            return
+        }
         let n = playChoices.count
         guard n > 0 else { snap(); return }
         // Before a pick, the lane buttons (J/K/L, X/A/B) choose a card; after it, any action button snaps.
@@ -238,6 +306,13 @@ public struct Match: Sendable {
             if chosenChoice == nil { choose(Int(world.rng.nextUInt32() % UInt32(n))) }
             snap()
         }
+    }
+
+    private mutating func dismissDriveRecap() {
+        opponentDrive = nil
+        opponentDriveTicks = 0
+        phaseTicks = 0
+        message = "SELECT PLAY"
     }
 
     private mutating func choose(_ i: Int) {
@@ -438,15 +513,20 @@ public struct Match: Sendable {
             homeScore += 7
             message = "TOUCHDOWN!"
             restartDrive()
-            simulateOpponentDrive(after: .touchdown)
+            simulateOpponentDrive(after: .touchdown, from: Match.kickoffYardLine)
         case .safety:
             awayScore += 2
             message = "SAFETY!"
             restartDrive()
+            simulateOpponentDrive(after: .safety, from: Match.kickoffYardLine)
         case .interception:
             message = "INTERCEPTED!"
             restartDrive()
-            simulateOpponentDrive(after: .interception)
+            // Picked off in their own end zone is a touchback; otherwise they take over where the pick was made.
+            let theirSpot = Match.mirrored(spot.y)
+            simulateOpponentDrive(
+                after: .interception,
+                from: theirSpot <= Field.ownGoalLine ? Field.ownGoalLine + 20 : clamp(theirSpot.rounded(), 11, 109))
         case .incomplete:
             message = text ?? "INCOMPLETE"
             advanceDown(to: lineOfScrimmage)
@@ -471,7 +551,7 @@ public struct Match: Sendable {
         } else if down >= 4 {
             message += "  TURNOVER ON DOWNS"
             restartDrive()
-            simulateOpponentDrive(after: .downs)
+            simulateOpponentDrive(after: .downs, from: Match.mirrored(spot))
         } else {
             nextLOS = spot
             nextDown = down + 1
@@ -485,75 +565,49 @@ public struct Match: Sendable {
         nextFirstDown = 45
     }
 
-    /// Temporary single-player possession simulation until defensive gameplay is available: plays out the
-    /// opposing drive with the deterministic RNG and records a box score for the recap panel.
-    private mutating func simulateOpponentDrive(after trigger: OpponentDrive.Trigger) {
-        let startYard = 25
-        var yard = Float(startYard)
-        var driveDown = 1
-        var toGo: Float = 10
-        var plays = 0
-        var seconds: Float = 0
-        var points = 0
-        var ending: OpponentDrive.Ending = .punt
+    /// Converts a field y between the two teams' points of view (the engine's offense always drives toward +y).
+    static func mirrored(_ y: Float) -> Float { Field.length - y }
 
-        while plays < 24 {
-            if clock <= 0 { ending = .clockExpired; break }
-            plays += 1
-            let elapsed = Float(8 + world.rng.nextUInt32() % 9)
-            seconds += elapsed
-            clock = max(0, clock - elapsed)
-
-            let roll = world.rng.unitFloat()
-            let gain: Float
-            switch roll {
-            case ..<0.22: gain = 0  // incompletion / stuff
-            case ..<0.34: gain = -Float(world.rng.nextUInt32() % 8) - 1  // loss or sack
-            case ..<0.80: gain = Float(world.rng.nextUInt32() % 9) + 1  // short gain
-            case ..<0.97: gain = Float(9 + world.rng.nextUInt32() % 13)  // chunk play
-            default: gain = Float(22 + world.rng.nextUInt32() % 30)  // big play
-            }
-            yard = clamp(yard + gain, 1, 100)
-
-            if yard >= 100 {
-                points = 7
-                awayScore += 7
-                ending = .touchdown
-                break
-            }
-            if world.rng.unitFloat() < 0.022 {
-                ending = .turnover
-                break
-            }
-            if gain >= toGo {
-                driveDown = 1
-                toGo = min(10, 100 - yard)
-            } else if driveDown >= 4 {
-                // Fourth down: try a field goal in range, otherwise punt it away.
-                if yard >= 62 {
-                    if world.rng.unitFloat() < clamp(0.35 + (yard - 62) * 0.016, 0.3, 0.9) {
-                        points = 3
-                        awayScore += 3
-                        ending = .fieldGoal
-                    } else {
-                        ending = .missedFieldGoal
-                    }
-                } else {
-                    ending = world.rng.unitFloat() < 0.15 ? .downs : .punt
-                }
-                break
-            } else {
-                driveDown += 1
-                toGo -= gain
-            }
-        }
-
-        let endYard = ending == .touchdown ? 100 : Int(yard.rounded())
+    /// Plays the opposing possession out snap by snap on a headless copy of the engine (their offense vs the
+    /// user's defense, both run by the CPU), then hands the ball back to the user wherever the drive ended.
+    /// - Parameter start: the opponent's line of scrimmage, in their own field coordinates.
+    private mutating func simulateOpponentDrive(after trigger: OpponentDrive.Trigger, from start: Float) {
+        guard !isNestedSimulation else { return }
+        let seed = UInt64(world.rng.nextUInt32()) << 32 | UInt64(world.rng.nextUInt32())
+        var sim = OpponentDriveSimulator(
+            seed: seed, playbook: playbook, format: format, curves: world.curves,
+            offense: opponentOffenseRoster, defense: homeDefenseRoster)
+        let result = sim.run(
+            team: opponentName, trigger: trigger, startLine: start, quarter: quarter, clock: clock,
+            scoreDelta: awayScore - homeScore)
+        awayScore += result.opponentPoints
+        homeScore += result.userPoints
+        quarter = result.quarter
+        clock = result.clock
+        nextLOS = result.userLineOfScrimmage
+        nextDown = 1
+        nextFirstDown = min(nextLOS + 10, Field.goalLine)
         opponentDriveTicks = Match.driveRecapTicks
-        opponentDrive = OpponentDrive(
-            team: opponentName, trigger: trigger, ending: ending,
-            plays: plays, yards: endYard - startYard, points: points,
-            seconds: seconds, startYard: startYard, endYard: endYard)
+        opponentDrive = result.drive
+    }
+
+    // MARK: Headless possession support
+
+    /// Lines the (nested) match up for one snap at an arbitrary spot.
+    mutating func setUpPlay(lineOfScrimmage los: Float, down: Int, firstDownLine: Float) {
+        nextLOS = los
+        nextDown = down
+        nextFirstDown = firstDownLine
+        clock = Match.quarterSeconds
+        message = ""
+        resetFormation()
+    }
+
+    /// Ends a stalled play where the ball is (safety net for the headless driver).
+    mutating func forceWhistle() {
+        guard phase == .live else { return }
+        let spot = world.ballCarrier.map { world[$0].location } ?? Vec2(0, lineOfScrimmage)
+        endPlay(.tackled, at: spot)
     }
 
     private mutating func resetFormation() {

@@ -29,8 +29,9 @@ struct HUDState: Equatable {
     /// The 3 plays offered this down and which one (if any) is picked.
     var playCards: [PlayDiagram] = []
     var chosenCard: Int?
-    /// Recap of the last simulated opposing possession, shown until the next snap.
+    /// Recap of the last simulated opposing possession, shown as a modal dialog before play selection.
     var opponentDrive: OpponentDrive?
+    var showDriveRecap = false
 }
 
 /// Dev overlay numbers, refreshed ~4×/s.
@@ -104,6 +105,7 @@ final class GameSession: RenderFrameSource {
     @ObservationIgnored private var excitement: Float = 0.2
     @ObservationIgnored private var autoRNG = PCG32(seed: 7)
     @ObservationIgnored private var autoThrowTick = 70
+    @ObservationIgnored private var recapTime: Float = 0
     @ObservationIgnored private var frameCount = 0
     @ObservationIgnored private var statsWindowStart = CACurrentMediaTime()
     @ObservationIgnored private var lastSimMs: Float = 0
@@ -191,7 +193,9 @@ final class GameSession: RenderFrameSource {
         homeTeam = home
         awayTeam = away
         sim = GameSimulation(seed: seed, playbook: playbook, format: format, curves: curves)
-        sim.setRoster(offense: home.gameRoster(for: .offense), defense: away.gameRoster(for: .defense))
+        sim.setRoster(
+            offense: home.gameRoster(for: .offense), defense: away.gameRoster(for: .defense),
+            opponentOffense: away.gameRoster(for: .offense), homeDefense: home.gameRoster(for: .defense))
         sim.setOpponentName(away.name)
         clock = GameClock()
         input.reset()
@@ -370,6 +374,10 @@ final class GameSession: RenderFrameSource {
     private func autopilotInput(_ user: TickInput) -> TickInput {
         var t = user
         let m = sim.match
+        if m.isShowingDriveRecap {
+            if m.driveRecapElapsedTicks >= 60 * 4 { t.buttons.insert(.snap) }
+            return t
+        }
         switch m.phase {
         case .preSnap:
             if m.phaseTicks == 40 { t.playSelect = Int8(autoRNG.nextUInt32() % UInt32(max(1, m.playChoices.count))) }
@@ -478,6 +486,48 @@ final class GameSession: RenderFrameSource {
         buildStatBars(&frame.statBars)
         frame.debugLines.removeAll(keepingCapacity: true)
         if settings.debugDraw { buildDebug(&frame.debugLines) }
+        if m.isShowingDriveRecap {
+            recapTime += realDt
+            buildDriveRecapFrame(&frame)
+        } else {
+            recapTime = 0
+        }
+    }
+
+    /// Behind the opposing-drive recap: the opponent lines up shoulder to shoulder facing the camera and dances —
+    /// a bouncing wave down the line, a side-step shuffle and the odd spin.
+    private func buildDriveRecapFrame(_ frame: inout RenderFrame) {
+        frame.players.removeAll { $0.team == 0 }
+        let rowY: Float = 60
+        let count = frame.players.count
+        let t = recapTime
+        for i in frame.players.indices {
+            let slot = Float(i) - Float(count - 1) / 2
+            let beat = t * 2.2 + Float(i) * 0.55
+            let shuffle = sinf(t * 2.6) * 0.45
+            let x = slot * 2.3 + shuffle
+            frame.players[i].position = fieldToWorld(Vec2(x, rowY + (i.isMultiple(of: 2) ? 0 : 0.8)))
+            // Every few seconds one player breaks into a spin while the rest keep grooving.
+            let spinner = Int(t / 2.4) % max(1, count) == i
+            let sway = sinf(beat) * 0.35
+            frame.players[i].yaw = .pi + (spinner ? t * 9 : sway)
+            let stepping = Int(t / 1.6 + Float(i % 3)).isMultiple(of: 2)
+            frame.players[i].pose = stepping ? .celebrate : .run
+            frame.players[i].phase = stepping ? beat : t * 9
+            frame.players[i].speed01 = stepping ? 0.4 : 0.25
+            frame.players[i].turbo = false
+            frame.players[i].controlled = false
+        }
+        let drift = sinf(t * 0.35) * 2.5
+        frame.camera.eye = fieldToWorld(Vec2(drift, rowY - 14), height: 3.2)
+        frame.camera.target = fieldToWorld(Vec2(drift * 0.3, rowY), height: 1.3)
+        frame.camera.fovY = 0.72
+        frame.ballVisible = false
+        frame.showLines = false
+        frame.markers.removeAll(keepingCapacity: true)
+        frame.statBars.removeAll(keepingCapacity: true)
+        frame.debugLines.removeAll(keepingCapacity: true)
+        frame.crowdExcitement = 0.6
     }
 
     private func buildIntroFrame(_ frame: inout RenderFrame) {
@@ -621,6 +671,7 @@ final class GameSession: RenderFrameSource {
         h.ballOn = yard == 50 ? "MIDFIELD" : (yard < 50 ? "OWN \(yard)" : "OPP \(100 - yard)")
         h.message = m.message
         h.opponentDrive = m.opponentDrive
+        h.showDriveRecap = m.isShowingDriveRecap
         h.phase = m.phase
         h.playName = m.offensePlay.name.uppercased()
         h.defenseName = m.defensePlay.name.uppercased()
