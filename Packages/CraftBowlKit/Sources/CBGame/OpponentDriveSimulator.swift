@@ -24,6 +24,24 @@ public struct DriveStats: Sendable, Equatable {
 
     public var netYards: Int { passYards + rushYards - sackYards }
     public var rushAverage: Float { rushAttempts > 0 ? Float(rushYards) / Float(rushAttempts) : 0 }
+    /// Offensive snaps (kicks excluded).
+    public var plays: Int { passAttempts + rushAttempts + sacks }
+
+    /// Folds another possession's numbers into this running total.
+    public mutating func add(_ other: DriveStats) {
+        passAttempts += other.passAttempts
+        completions += other.completions
+        passYards += other.passYards
+        passTouchdowns += other.passTouchdowns
+        interceptions += other.interceptions
+        sacks += other.sacks
+        sackYards += other.sackYards
+        rushAttempts += other.rushAttempts
+        rushYards += other.rushYards
+        rushTouchdowns += other.rushTouchdowns
+        firstDowns += other.firstDowns
+        longestPlay = max(longestPlay, other.longestPlay)
+    }
 }
 
 /// Plays an opposing possession out on a private copy of the engine: the opponent's roster is the offense,

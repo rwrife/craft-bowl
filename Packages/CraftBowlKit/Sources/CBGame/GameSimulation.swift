@@ -24,6 +24,9 @@ public struct GameSimulation: Sendable {
 
     public mutating func setOpponentName(_ name: String) { match.setOpponentName(name) }
 
+    /// Jumps the game clock (tests and debug screens that need a late-game situation).
+    public mutating func setGameClock(quarter: Int, clock: Float) { match.setGameClock(quarter: quarter, clock: clock) }
+
     public mutating func setRoster(offense: [Position: Match.RosterEntry],
                                    defense: [Position: Match.RosterEntry],
                                    opponentOffense: [Position: Match.RosterEntry] = [:],
