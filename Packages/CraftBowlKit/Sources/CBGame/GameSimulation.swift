@@ -24,9 +24,11 @@ public struct GameSimulation: Sendable {
 
     public mutating func setOpponentName(_ name: String) { match.setOpponentName(name) }
 
-    public mutating func setRoster(offense: [Position: (ratings: Ratings, number: Int)],
-                                   defense: [Position: (ratings: Ratings, number: Int)]) {
-        match.setRoster(offense: offense, defense: defense)
+    public mutating func setRoster(offense: [Position: Match.RosterEntry],
+                                   defense: [Position: Match.RosterEntry],
+                                   opponentOffense: [Position: Match.RosterEntry] = [:],
+                                   homeDefense: [Position: Match.RosterEntry] = [:]) {
+        match.setRoster(offense: offense, defense: defense, opponentOffense: opponentOffense, homeDefense: homeDefense)
     }
 }
 

@@ -171,6 +171,7 @@ struct RootView: View {
                 case .game:
                     HUDView(session: session)
                     TouchControls(session: session)
+                    DriveRecapDialog(session: session)
                     Button("MENU") {
                         session.enterAttractMode()
                         screen = .title

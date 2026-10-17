@@ -54,16 +54,12 @@ struct HUDView: View {
             }
             .padding(.top, 10)
 
-            if !h.message.isEmpty && h.message != "SELECT PLAY" {
+            if !h.message.isEmpty && h.message != "SELECT PLAY" && !h.showDriveRecap {
                 Text(h.message)
                     .font(.pixel(h.message.count > 12 ? 28 : 40, .black))
                     .foregroundStyle(.yellow)
                     .shadow(color: .black, radius: 0, x: 3, y: 3)
                     .padding(.top, 28)
-            }
-            if let drive = h.opponentDrive {
-                OpponentDriveRecap(drive: drive, teamColor: awayColor)
-                    .padding(.top, 16)
             }
             Spacer()
             if h.phase == .live {
@@ -82,41 +78,120 @@ struct HUDView: View {
     }
 }
 
-/// Box score shown after a simulated opposing possession: who had the ball, how they got it,
-/// what they did with it and how it ended.
-private struct OpponentDriveRecap: View {
-    let drive: OpponentDrive
-    let teamColor: Color
+/// Modal recap of a simulated opposing possession: a translucent card over the opponent's sideline dance with
+/// how the drive ended, the passing / rushing box score, the last few snaps and where the user gets the ball.
+struct DriveRecapDialog: View {
+    let session: GameSession
+    @State private var appeared = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(drive.headline).font(.pixel(14)).lineLimit(1).minimumScaleFactor(0.6)
-                Text(drive.trigger.text).font(.pixel(10, .bold)).foregroundStyle(.white.opacity(0.85))
+        let h = session.hud
+        if h.showDriveRecap, let drive = h.opponentDrive {
+            let teamColor = session.awayTeam?.primaryColor ?? awayRed
+            let homeName = session.homeTeam?.abbreviation ?? "BLUE"
+            let awayName = session.awayTeam?.abbreviation ?? "RED"
+            ZStack {
+                LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                card(drive, teamColor: teamColor, score: "\(homeName) \(h.homeScore)  ·  \(awayName) \(h.awayScore)")
+                    .scaleEffect(appeared ? 1 : 0.9)
+                    .opacity(appeared ? 1 : 0)
+                    .padding(.top, 44)
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12).padding(.vertical, 5)
-            .frame(maxWidth: .infinity)
-            .background(teamColor)
-
-            VStack(spacing: 4) {
-                HStack(spacing: 10) {
-                    StatChip(label: "PLAYS", value: "\(drive.plays)")
-                    StatChip(label: "YARDS", value: "\(drive.yards >= 0 ? "+" : "")\(drive.yards)")
-                    StatChip(label: "TIME", value: drive.timeOfPossession)
-                }
-                Text(drive.fieldPositionText).font(.pixel(10)).foregroundStyle(.white.opacity(0.75))
-                Text(drive.resultText)
-                    .font(.pixel(16, .black))
-                    .foregroundStyle(drive.points > 0 ? Color.yellow : Color.white)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(panel)
+            .contentShape(Rectangle())
+            .onTapGesture { session.input.send(.snap, from: .touch) }
+            .onAppear { withAnimation(.spring(duration: 0.35)) { appeared = true } }
+            .onDisappear { appeared = false }
         }
-        .frame(width: 300)
-        .overlay(Rectangle().stroke(.black, lineWidth: 2))
-        .shadow(color: .black.opacity(0.6), radius: 0, x: 3, y: 3)
+    }
+
+    private func card(_ drive: OpponentDrive, teamColor: Color, score: String) -> some View {
+        let s = drive.stats
+        let accent: Color = drive.points > 0 ? .yellow : (drive.ending.isStop ? .green : .white)
+        return VStack(spacing: 8) {
+            HStack {
+                Text(drive.headline).font(.pixel(13)).lineLimit(1).minimumScaleFactor(0.6)
+                Spacer()
+                Text(drive.trigger.text).font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(teamColor.opacity(0.85), in: .rect(cornerRadius: 10))
+
+            VStack(spacing: 2) {
+                Text(drive.resultText).font(.pixel(26, .black)).foregroundStyle(accent)
+                    .shadow(color: .black.opacity(0.7), radius: 0, x: 2, y: 2)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                Text("\(drive.fieldPositionText)   ·   \(score)")
+                    .font(.pixel(10, .bold)).foregroundStyle(.white.opacity(0.8))
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 6) {
+                    StatRow(title: "PASSING", items: [
+                        ("C/ATT", "\(s.completions)/\(s.passAttempts)"), ("YDS", "\(s.passYards)"),
+                        ("TD", "\(s.passTouchdowns)"), ("INT", "\(s.interceptions)"),
+                    ])
+                    StatRow(title: "RUSHING", items: [
+                        ("ATT", "\(s.rushAttempts)"), ("YDS", "\(s.rushYards)"),
+                        ("AVG", String(format: "%.1f", s.rushAverage)), ("TD", "\(s.rushTouchdowns)"),
+                    ])
+                    StatRow(title: "DRIVE", items: [
+                        ("PLAYS", "\(drive.plays)"), ("NET", "\(s.netYards)"),
+                        ("1ST", "\(s.firstDowns)"), ("TOP", drive.timeOfPossession),
+                    ])
+                }
+                .frame(width: 270)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("PLAY BY PLAY").font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+                    let recent = drive.playByPlay.suffix(6)
+                    if drive.playByPlay.count > recent.count {
+                        Text("…\(drive.playByPlay.count - recent.count) EARLIER").font(.pixel(8)).foregroundStyle(.white.opacity(0.45))
+                    }
+                    ForEach(Array(recent.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.pixel(9, .semibold)).foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(width: 270, alignment: .leading)
+                .padding(8)
+                .background(.black.opacity(0.25), in: .rect(cornerRadius: 8))
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Text(drive.resumeText).font(.pixel(13)).foregroundStyle(.yellow)
+                Spacer()
+                Text("TAP OR PRESS ANY BUTTON").font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(width: 590)
+        .background(.ultraThinMaterial.opacity(0.9), in: .rect(cornerRadius: 16))
+        .background(panel.opacity(0.35), in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(teamColor.opacity(0.9), lineWidth: 2))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private struct StatRow: View {
+    let title: String
+    let items: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+            HStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    StatChip(label: item.0, value: item.1)
+                }
+            }
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.07), in: .rect(cornerRadius: 6))
+        }
     }
 }
 
@@ -126,10 +201,10 @@ private struct StatChip: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            Text(label).font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
-            Text(value).font(.pixel(16, .black)).foregroundStyle(.white)
+            Text(label).font(.pixel(8, .bold)).foregroundStyle(.white.opacity(0.6))
+            Text(value).font(.pixel(14, .black)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
         }
-        .frame(minWidth: 62)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -294,11 +369,12 @@ struct TouchControls: View {
         HStack(alignment: .bottom) {
             VirtualStick { send(.move($0)) }
                 .padding(.leading, 40)
+                .opacity(h.showDriveRecap ? 0 : 1)
             Spacer()
             VStack(alignment: .trailing, spacing: 10) {
                 switch h.phase {
                 case .preSnap:
-                    if h.chosenCard != nil {
+                    if h.chosenCard != nil && !h.showDriveRecap {
                         ActionButton(label: "SNAP", color: homeBlue, size: 84) { send(.snap) }
                     }
                 case .live:
@@ -323,7 +399,7 @@ struct TouchControls: View {
         .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .bottom) {
-            if h.phase == .preSnap && !h.playCards.isEmpty {
+            if h.phase == .preSnap && !h.playCards.isEmpty && !h.showDriveRecap {
                 PlayCardsView(session: session).padding(.bottom, 40)
             }
         }
