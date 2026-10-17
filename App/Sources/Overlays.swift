@@ -36,6 +36,14 @@ struct HUDView: View {
                         Text(h.clock).font(.pixel(14))
                     }
                     .frame(width: 64, height: 34).background(.black.opacity(0.9))
+                    if let pc = h.playClock {
+                        VStack(spacing: 0) {
+                            Text("PLAY").font(.pixel(8))
+                            Text(String(format: ":%02d", pc)).font(.pixel(14))
+                                .foregroundStyle(pc <= 3 ? Color(red: 1, green: 0.3, blue: 0.25) : .yellow)
+                        }
+                        .frame(width: 40, height: 34).background(.black.opacity(0.9))
+                    }
                     Text("\(h.awayScore)").font(.pixel(22)).frame(width: 46, height: 34).background(panel)
                     Text(awayName).font(.pixel(15)).padding(.horizontal, 12).frame(height: 34).background(awayColor)
                 }
@@ -163,6 +171,8 @@ struct DriveRecapDialog: View {
 
             HStack {
                 Text(drive.resumeText).font(.pixel(13)).foregroundStyle(.yellow)
+                Spacer()
+                Text("CLOCK  \(drive.clockText)").font(.pixel(10, .bold)).foregroundStyle(.white.opacity(0.85))
                 Spacer()
                 Text("TAP OR PRESS ANY BUTTON").font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
             }

@@ -72,11 +72,17 @@ public struct OpponentDrive: Sendable, Equatable {
     public let playByPlay: [String]
     /// The user's own yard line (0–100) where their next possession starts.
     public let resumeYard: Int
+    /// Game clock when the drive started and ended.
+    public let startQuarter: Int
+    public let startClock: Float
+    public let endQuarter: Int
+    public let endClock: Float
 
     public init(
         team: String, trigger: Trigger, ending: Ending, plays: Int, yards: Int, points: Int, seconds: Float,
         startYard: Int, endYard: Int, stats: DriveStats = DriveStats(), playByPlay: [String] = [],
-        resumeYard: Int = 25
+        resumeYard: Int = 25, startQuarter: Int = 1, startClock: Float = Match.quarterSeconds, endQuarter: Int = 1,
+        endClock: Float = Match.quarterSeconds
     ) {
         self.team = team
         self.trigger = trigger
@@ -90,6 +96,10 @@ public struct OpponentDrive: Sendable, Equatable {
         self.stats = stats
         self.playByPlay = playByPlay
         self.resumeYard = resumeYard
+        self.startQuarter = startQuarter
+        self.startClock = startClock
+        self.endQuarter = endQuarter
+        self.endClock = endClock
     }
 
     public var headline: String { "\(team) DRIVE" }
@@ -100,6 +110,14 @@ public struct OpponentDrive: Sendable, Equatable {
     public var resultText: String { points > 0 ? "\(ending.text)  +\(points)" : ending.text }
     public var fieldPositionText: String {
         "\(OpponentDrive.spot(startYard)) → \(ending == .touchdown ? "END ZONE" : OpponentDrive.spot(endYard))"
+    }
+    /// "Q2 2:41 → Q2 1:12": how much game clock the drive took.
+    public var clockText: String {
+        func fmt(_ q: Int, _ c: Float) -> String {
+            let s = Int(c.rounded(.up))
+            return String(format: "Q%d %d:%02d", q, s / 60, s % 60)
+        }
+        return "\(fmt(startQuarter, startClock)) → \(fmt(endQuarter, endClock))"
     }
     public var resumeText: String {
         ending == .endOfGame ? "THAT'S THE GAME" : "YOUR BALL  \(OpponentDrive.spot(resumeYard))"
@@ -115,7 +133,8 @@ public struct OpponentDrive: Sendable, Equatable {
 /// formation → snap → QB phase → runner phase → whistle → spot & downs.
 public struct Match: Sendable {
     public static let ticksPerSecond = Int(GameClock.ticksPerSecond)
-    public static let autoSnapTicks = 60 * 10
+    /// Play clock: the user has this long to pick a play (then the chosen play is snapped automatically).
+    public static let playClockTicks = 60 * 10
     public static let deadBallTicks = 150
     /// The opposing-possession recap stays up this long (pre-snap) if the user never dismisses it.
     public static let driveRecapTicks = 60 * 30
@@ -158,6 +177,12 @@ public struct Match: Sendable {
     /// Running box scores: the user's snaps, and every simulated opposing possession.
     public private(set) var homeGame = TeamGameStats()
     public private(set) var awayGame = TeamGameStats()
+    /// The game clock keeps running between plays (after an in-bounds run, catch or sack) until the next snap.
+    public private(set) var isClockRunning = false
+    /// Delay-of-game flags thrown on the user this game.
+    public private(set) var delayOfGamePenalties = 0
+    /// The opening snap of each half has no play clock.
+    public private(set) var isUntimedSnap = true
     /// The final gun has sounded: the sim holds on the final-score screen until a button starts a rematch.
     public private(set) var isGameOver = false
     public static let choicesPerDown = 3
@@ -183,6 +208,12 @@ public struct Match: Sendable {
     /// Both teams' final (or, mid-game, running) numbers.
     public var gameSummary: GameSummary {
         GameSummary(homeScore: homeScore, awayScore: awayScore, home: homeGame, away: awayGame)
+    }
+    /// Seconds left to pick a play / snap, or nil when the play clock isn't running (untimed first play of a
+    /// half, the ball is live or dead, a recap or the final screen is up).
+    public var playClockRemaining: Float? {
+        guard phase == .preSnap, !isUntimedSnap, opponentDrive == nil, !isGameOver else { return nil }
+        return Float(max(0, Match.playClockTicks - phaseTicks)) / Float(Match.ticksPerSecond)
     }
     /// 4th quarter with no time left: the game ends as soon as the current play / recap is done.
     private var isFinalGun: Bool { quarter == 4 && clock <= 0 }
@@ -285,6 +316,10 @@ public struct Match: Sendable {
             if opponentDriveTicks <= 0 { dismissDriveRecap() }
             if isGameOver { return }
         }
+        if phase != .live && isClockRunning && opponentDrive == nil {
+            runGameClock()
+            if isGameOver { return }
+        }
         switch phase {
         case .preSnap: stepPreSnap(input)
         case .live: stepLive(input, ai: ai)
@@ -294,6 +329,30 @@ public struct Match: Sendable {
             // A drive recap (e.g. the opponent ran out the clock) still gets shown before the final screen.
             if isFinalGun && opponentDrive == nil { endGame() } else { resetFormation() }
         }
+    }
+
+    /// Burns game clock while the user has the ball between plays; the quarter can expire before the snap.
+    private mutating func runGameClock() {
+        let used = min(clock, World.dt)
+        clock -= used
+        homeGame.seconds += used
+        guard clock <= 0 else { return }
+        isClockRunning = false
+        if quarter < 4 {
+            advanceQuarter()
+        } else if phase == .preSnap {
+            endGame()
+        }
+        // (Dead ball in the 4th: the game ends once the whistle period is over.)
+    }
+
+    /// End of Q1/Q2/Q3. The clock stops for the new quarter, and the second half opens with an untimed snap.
+    private mutating func advanceQuarter() {
+        quarter += 1
+        clock = Match.quarterSeconds
+        isClockRunning = false
+        if quarter == 3 { isUntimedSnap = true }
+        if phase == .preSnap { phaseTicks = 0 }
     }
 
     private mutating func stepGameOver(_ input: TickInput) {
@@ -322,6 +381,9 @@ public struct Match: Sendable {
         clock = Match.quarterSeconds
         homeGame = TeamGameStats()
         awayGame = TeamGameStats()
+        isClockRunning = false
+        isUntimedSnap = true
+        delayOfGamePenalties = 0
         opponentDrive = nil
         opponentDriveTicks = 0
         lastOutcome = nil
@@ -363,11 +425,30 @@ public struct Match: Sendable {
         let wantsSnap = input.buttons.contains(.snap) || (wasChosen && !input.buttons.isDisjoint(with: snapButtons))
         if chosenChoice != nil && wantsSnap {
             snap()
-        } else if phaseTicks >= Match.autoSnapTicks {
-            // Play clock ran out: stuck with a random card.
-            if chosenChoice == nil { choose(Int(world.rng.nextUInt32() % UInt32(n))) }
-            snap()
+        } else if !isUntimedSnap && phaseTicks >= Match.playClockTicks {
+            // Play clock ran out: a picked play is snapped, otherwise it's a delay of game.
+            if chosenChoice != nil { snap() } else { delayOfGame() }
         }
+    }
+
+    /// No play picked before the play clock expired: the down is lost (on 4th down the ball goes over at the
+    /// spot) and the clock stops for the penalty.
+    private mutating func delayOfGame() {
+        isClockRunning = false
+        lastOutcome = nil
+        delayOfGamePenalties += 1
+        message = "DELAY OF GAME  LOSS OF DOWN"
+        if down >= 4 {
+            message += "  TURNOVER ON DOWNS"
+            homeGame.turnovers += 1
+            restartDrive()
+            simulateOpponentDrive(after: .downs, from: Match.mirrored(lineOfScrimmage))
+        } else {
+            nextLOS = lineOfScrimmage
+            nextDown = down + 1
+            nextFirstDown = firstDownLine
+        }
+        resetFormation()
     }
 
     private mutating func dismissDriveRecap() {
@@ -403,6 +484,8 @@ public struct Match: Sendable {
         phase = .live
         phaseTicks = 0
         runnerPhase = false
+        isUntimedSnap = false
+        isClockRunning = true
         playThrown = false
         playCaught = false
         message = ""
@@ -570,6 +653,9 @@ public struct Match: Sendable {
 
     private mutating func endPlay(_ outcome: PlayOutcome, at spot: Vec2, text: String? = nil) {
         recordHomePlay(outcome, at: spot)
+        // In-bounds runs, catches and sacks keep the clock running; incompletions, out of bounds, scores and
+        // changes of possession stop it until the next snap.
+        isClockRunning = outcome == .tackled || outcome == .dive || outcome == .sack
         lastOutcome = outcome
         phase = .dead
         for i in world.players.indices { world.players[i].isExerting = false }
@@ -608,7 +694,7 @@ public struct Match: Sendable {
             advanceDown(to: clamp(spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1))
         }
         if clock <= 0 {
-            if quarter < 4 { quarter += 1; clock = Match.quarterSeconds } else { message += "  —  FINAL" }
+            if quarter < 4 { advanceQuarter() } else { message += "  —  FINAL" }
         }
     }
 
@@ -622,6 +708,7 @@ public struct Match: Sendable {
         } else if down >= 4 {
             message += "  TURNOVER ON DOWNS"
             homeGame.turnovers += 1
+            isClockRunning = false
             restartDrive()
             simulateOpponentDrive(after: .downs, from: Match.mirrored(spot))
         } else {
@@ -693,8 +780,12 @@ public struct Match: Sendable {
         awayGame.stats.add(result.drive.stats)
         awayGame.seconds += result.drive.seconds
         if result.drive.ending == .interception || result.drive.ending == .downs { awayGame.turnovers += 1 }
+        // The user gets the ball back after a change of possession: clock stopped; after halftime the second
+        // half opens with an untimed snap.
+        if result.quarter == 3 && quarter < 3 { isUntimedSnap = true }
         quarter = result.quarter
         clock = result.clock
+        isClockRunning = false
         nextLOS = result.userLineOfScrimmage
         nextDown = 1
         nextFirstDown = min(nextLOS + 10, Field.goalLine)

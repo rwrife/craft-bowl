@@ -97,7 +97,7 @@ final class OpponentDriveTests: XCTestCase {
         XCTAssertTrue(sim.match.isShowingDriveRecap || drive.ending == .endOfGame)
         if sim.match.isShowingDriveRecap {
             XCTAssertEqual(sim.match.lineOfScrimmage, Field.ownGoalLine + Float(drive.resumeYard))
-            for _ in 0..<(Match.autoSnapTicks + 10) { sim.tick(.none) }
+            for _ in 0..<(Match.playClockTicks + 10) { sim.tick(.none) }
             XCTAssertEqual(sim.match.phase, .preSnap, "no auto-snap while the recap is up")
             sim.tick(TickInput(buttons: [.snap]))
             XCTAssertNil(sim.match.opponentDrive, "any button dismisses the recap")

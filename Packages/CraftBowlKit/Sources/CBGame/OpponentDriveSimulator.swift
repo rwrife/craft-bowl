@@ -120,7 +120,15 @@ struct OpponentDriveSimulator {
             clock = max(0, clock - s)
         }
 
+        // Clock that runs between snaps after an in-bounds play (applied before the next snap, so a scoring or
+        // turnover play doesn't burn any).
+        var pendingRunoff: Float = 0
+
         driveLoop: while true {
+            if pendingRunoff > 0 {
+                useClock(pendingRunoff)
+                pendingRunoff = 0
+            }
             if clock <= 0 {
                 // The possession carries over into Q2/Q4; halftime and the final gun end it.
                 if quarter == 1 || quarter == 3 {
@@ -194,9 +202,10 @@ struct OpponentDriveSimulator {
             let before = situation()
             let r = runPlay(los: los, down: down, toGo: toGo)
             plays += 1
-            let runoff: Float =
-                (r.outcome == .incomplete || r.outcome == .outOfBounds) ? 1 : 4 + rng.unitFloat() * 5
-            useClock(r.seconds + runoff)
+            useClock(r.seconds)
+            if r.outcome == .tackled || r.outcome == .dive || r.outcome == .sack {
+                pendingRunoff = betweenPlays(quarter: quarter, clock: clock, lead: scoreDelta + points)
+            }
             stats.longestPlay = max(stats.longestPlay, r.gain)
             let who = r.carrierNumber.map { "#\($0)" } ?? ""
             let signed = "\(r.gain >= 0 ? "+" : "")\(r.gain)"
@@ -281,10 +290,29 @@ struct OpponentDriveSimulator {
         let drive = OpponentDrive(
             team: team, trigger: trigger, ending: ending, plays: plays, yards: endYard - startYard, points: points,
             seconds: seconds, startYard: startYard, endYard: endYard, stats: stats, playByPlay: log,
-            resumeYard: Int(resume - Field.ownGoalLine))
+            resumeYard: Int(resume - Field.ownGoalLine), startQuarter: startQuarter, startClock: startClock,
+            endQuarter: quarter, endClock: clock)
         return Result(
             drive: drive, userLineOfScrimmage: resume, opponentPoints: points, userPoints: userPoints,
             quarter: quarter, clock: clock)
+    }
+
+    /// Running-clock time from the whistle to the next snap: the dead-ball period plus however much of the
+    /// play clock the offense uses. Late in a half a trailing team hurries; a team protecting a 4th-quarter
+    /// lead milks the play clock.
+    private mutating func betweenPlays(quarter: Int, clock: Float, lead: Int) -> Float {
+        let deadBall = Float(Match.deadBallTicks) / Float(Match.ticksPerSecond)
+        let playClock = Float(Match.playClockTicks) / Float(Match.ticksPerSecond)
+        let lateHalf = (quarter == 2 || quarter == 4) && clock < 60
+        let used: Float
+        if lateHalf && lead <= 0 && (quarter == 2 || lead < 0) {
+            used = 1 + rng.unitFloat() * 2
+        } else if quarter == 4 && lead > 0 && clock < 120 {
+            used = playClock - 1 + rng.unitFloat()
+        } else {
+            used = 3 + rng.unitFloat() * 6
+        }
+        return deadBall + used
     }
 
     // MARK: One snap
