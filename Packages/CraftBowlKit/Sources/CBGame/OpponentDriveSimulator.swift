@@ -24,6 +24,24 @@ public struct DriveStats: Sendable, Equatable {
 
     public var netYards: Int { passYards + rushYards - sackYards }
     public var rushAverage: Float { rushAttempts > 0 ? Float(rushYards) / Float(rushAttempts) : 0 }
+    /// Offensive snaps (kicks excluded).
+    public var plays: Int { passAttempts + rushAttempts + sacks }
+
+    /// Folds another possession's numbers into this running total.
+    public mutating func add(_ other: DriveStats) {
+        passAttempts += other.passAttempts
+        completions += other.completions
+        passYards += other.passYards
+        passTouchdowns += other.passTouchdowns
+        interceptions += other.interceptions
+        sacks += other.sacks
+        sackYards += other.sackYards
+        rushAttempts += other.rushAttempts
+        rushYards += other.rushYards
+        rushTouchdowns += other.rushTouchdowns
+        firstDowns += other.firstDowns
+        longestPlay = max(longestPlay, other.longestPlay)
+    }
 }
 
 /// Plays an opposing possession out on a private copy of the engine: the opponent's roster is the offense,
@@ -134,7 +152,8 @@ struct OpponentDriveSimulator {
                 let kickDistance = Int((Field.goalLine - los).rounded()) + 17
                 let trailingLate = quarter == 4 && clock < 75 && scoreDelta + points < 0
                 let shortYardage = toGo <= 1.5 && los >= 55
-                let goForIt = trailingLate && (scoreDelta + points < -3 || kickDistance > 52)
+                let goForIt =
+                    trailingLate && (scoreDelta + points < -3 || kickDistance > 52)
                     || (shortYardage && kickDistance > 45 && rng.unitFloat() < 0.6)
                 if !goForIt && kickDistance <= 54 {
                     plays += 1
@@ -191,7 +210,8 @@ struct OpponentDriveSimulator {
                 ending = .interception
                 endLine = los
                 let userSpot = Match.mirrored(r.spot.y)
-                userLOS = userSpot <= Field.ownGoalLine
+                userLOS =
+                    userSpot <= Field.ownGoalLine
                     ? Field.ownGoalLine + 20 : clamp(userSpot.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
                 break driveLoop
             case .incomplete:
@@ -239,7 +259,8 @@ struct OpponentDriveSimulator {
                 break
             }
 
-            let spot = r.outcome == .incomplete ? los : clamp(r.spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
+            let spot =
+                r.outcome == .incomplete ? los : clamp(r.spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
             if spot >= firstDown {
                 stats.firstDowns += 1
                 los = spot

@@ -32,6 +32,8 @@ struct HUDState: Equatable {
     /// Recap of the last simulated opposing possession, shown as a modal dialog before play selection.
     var opponentDrive: OpponentDrive?
     var showDriveRecap = false
+    /// Both teams' final numbers once the game is over (nil while it's still being played).
+    var gameOver: GameSummary?
 }
 
 /// Dev overlay numbers, refreshed ~4×/s.
@@ -106,6 +108,7 @@ final class GameSession: RenderFrameSource {
     @ObservationIgnored private var autoRNG = PCG32(seed: 7)
     @ObservationIgnored private var autoThrowTick = 70
     @ObservationIgnored private var recapTime: Float = 0
+    @ObservationIgnored private var celebrationTime: Float = 0
     @ObservationIgnored private var frameCount = 0
     @ObservationIgnored private var statsWindowStart = CACurrentMediaTime()
     @ObservationIgnored private var lastSimMs: Float = 0
@@ -216,6 +219,10 @@ final class GameSession: RenderFrameSource {
         refreshCrowdVolume()
         resetSnapshots()
     }
+
+    #if DEBUG
+        func debugSetGameClock(quarter: Int, clock: Float) { sim.setGameClock(quarter: quarter, clock: clock) }
+    #endif
 
     func beginGameplay() {
         presentation = .gameplay
@@ -345,6 +352,7 @@ final class GameSession: RenderFrameSource {
 
     private func tick() {
         let phaseBeforeTick = sim.match.phase
+        let overBeforeTick = sim.match.isGameOver
         var ti: TickInput
         if var pb = playback {
             guard pb.cursor < pb.recording.inputs.count else {
@@ -373,6 +381,7 @@ final class GameSession: RenderFrameSource {
                 audio.playCheer()
             }
         }
+        if presentation == .gameplay, !overBeforeTick, sim.match.isGameOver { audio.playCheer() }
         if case .recording = replay {
             recording?.append(ti, resultingChecksum: sim.world.checksum)
             if let ticks = recording?.tickCount, ticks % 30 == 0 { replay = .recording(ticks: ticks) }
@@ -387,6 +396,10 @@ final class GameSession: RenderFrameSource {
         let m = sim.match
         if m.isShowingDriveRecap {
             if m.driveRecapElapsedTicks >= 60 * 4 { t.buttons.insert(.snap) }
+            return t
+        }
+        if m.isGameOver {
+            if m.phaseTicks >= 60 * 8 { t.buttons.insert(.snap) }
             return t
         }
         switch m.phase {
@@ -505,6 +518,96 @@ final class GameSession: RenderFrameSource {
         } else {
             recapTime = 0
         }
+        if m.isGameOver {
+            celebrationTime += realDt
+            buildCelebrationFrame(&frame, winner: m.gameSummary.winner)
+        } else {
+            celebrationTime = 0
+        }
+    }
+
+    /// Behind the final-score dialog. The winners mob midfield: a bouncing huddle circling a teammate hoisted
+    /// overhead, with the odd player breaking off into a spin. The losers trudge off toward their sideline,
+    /// some bent over with hands on knees. A tie gets a handshake line instead. The camera slowly orbits.
+    private func buildCelebrationFrame(_ frame: inout RenderFrame, winner: GameSummary.Winner) {
+        let t = celebrationTime
+        let center = Vec2(0, 60)
+        let winningTeam: UInt8 = winner == .away ? 1 : 0
+        let winners = frame.players.indices.filter { frame.players[$0].team == winningTeam }
+        let losers = frame.players.indices.filter { frame.players[$0].team != winningTeam }
+
+        if winner == .tie {
+            // Two lines file past each other, each player turned toward the other team.
+            for (team, indices) in [(0, winners), (1, losers)] {
+                let home = team == 0
+                for (slot, i) in indices.enumerated() {
+                    let slide = (t * 0.9).truncatingRemainder(dividingBy: 2.3)
+                    let x = (Float(slot) - Float(indices.count - 1) / 2) * 2.3 + (home ? slide : -slide)
+                    frame.players[i].position = fieldToWorld(Vec2(x, center.y + (home ? -0.8 : 0.8)))
+                    frame.players[i].yaw = home ? .pi : 0
+                    frame.players[i].pose = .run
+                    frame.players[i].phase = t * 4 + Float(slot)
+                    frame.players[i].speed01 = 0.15
+                }
+            }
+        } else {
+            let ringCount = max(1, winners.count - 1)
+            for (slot, i) in winners.enumerated() {
+                if slot == 0 {
+                    // Hoisted overhead in the middle of the huddle.
+                    let bob = abs(sinf(t * 3.4)) * 0.25
+                    frame.players[i].position = fieldToWorld(center, height: 1.25 + bob)
+                    frame.players[i].yaw = t * 0.6
+                    frame.players[i].phase = t * 5
+                    frame.players[i].speed01 = 0.6
+                } else {
+                    let ring = slot - 1
+                    let a = Float(ring) / Float(ringCount) * 2 * .pi + t * 0.5
+                    let bounce = abs(sinf(t * 6 + Float(ring) * 0.9)) * 0.35
+                    let r: Float = 2.6 + sinf(t * 1.7 + Float(ring)) * 0.25
+                    let p = center + Vec2(cosf(a), sinf(a)) * r
+                    frame.players[i].position = fieldToWorld(p, height: bounce)
+                    // Face the hoisted teammate, except whoever's spinning this beat.
+                    let spinner = Int(t / 1.8) % ringCount == ring
+                    let facing = atan2f(center.x - p.x, center.y - p.y)
+                    frame.players[i].yaw = -facing + (spinner ? t * 10 : sinf(t * 3 + Float(ring)) * 0.3)
+                    frame.players[i].phase = t * 6 + Float(ring) * 0.7
+                    frame.players[i].speed01 = 0.5
+                }
+                frame.players[i].pose = .celebrate
+            }
+            for (slot, i) in losers.enumerated() {
+                let k = Float(slot)
+                let walk = min(t * 0.7, 9)
+                let p = Vec2(
+                    (k - Float(losers.count - 1) / 2) * 3.1 + sinf(k * 1.3) * 1.2,
+                    center.y + 9 + walk + Float(slot % 3) * 1.4)
+                frame.players[i].position = fieldToWorld(p)
+                let resting = slot % 3 == 1
+                frame.players[i].yaw = resting ? .pi * 0.85 : 0
+                frame.players[i].pose = resting ? .stance : .run
+                frame.players[i].phase = t * 2.2 + k
+                frame.players[i].speed01 = 0.12
+            }
+        }
+        for i in frame.players.indices {
+            frame.players[i].turbo = false
+            frame.players[i].controlled = false
+        }
+        // Slow orbit, framed so the party sits left of the dialog.
+        let orbit = -0.9 + sinf(t * 0.18) * 0.55
+        let toEye = Vec2(sinf(orbit), -cosf(orbit))
+        let forward = Vec2(-toEye.x, -toEye.y)
+        let screenRight = Vec2(forward.y, -forward.x)
+        frame.camera.eye = fieldToWorld(center + toEye * 14, height: 4.2)
+        frame.camera.target = fieldToWorld(center + screenRight * 4.5 + forward * 3, height: 1.4)
+        frame.camera.fovY = 0.72
+        frame.ballVisible = false
+        frame.showLines = false
+        frame.markers.removeAll(keepingCapacity: true)
+        frame.statBars.removeAll(keepingCapacity: true)
+        frame.debugLines.removeAll(keepingCapacity: true)
+        frame.crowdExcitement = 1
     }
 
     /// Behind the opposing-drive recap: the opponent lines up shoulder to shoulder facing the camera and dances —
@@ -699,6 +802,7 @@ final class GameSession: RenderFrameSource {
         h.message = m.message
         h.opponentDrive = m.opponentDrive
         h.showDriveRecap = m.isShowingDriveRecap
+        h.gameOver = m.isGameOver ? m.gameSummary : nil
         h.phase = m.phase
         h.playName = m.offensePlay.name.uppercased()
         h.defenseName = m.defensePlay.name.uppercased()
