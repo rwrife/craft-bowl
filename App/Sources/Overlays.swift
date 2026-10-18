@@ -92,8 +92,10 @@ struct DriveRecapDialog: View {
             let homeName = session.homeTeam?.abbreviation ?? "BLUE"
             let awayName = session.awayTeam?.abbreviation ?? "RED"
             ZStack {
-                LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
-                    .ignoresSafeArea()
+                LinearGradient(
+                    colors: [.black.opacity(0.05), .black.opacity(0.45)], startPoint: .top, endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 card(drive, teamColor: teamColor, score: "\(homeName) \(h.homeScore)  ·  \(awayName) \(h.awayScore)")
                     .scaleEffect(appeared ? 1 : 0.9)
                     .opacity(appeared ? 1 : 0)
@@ -128,18 +130,24 @@ struct DriveRecapDialog: View {
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 6) {
-                    StatRow(title: "PASSING", items: [
-                        ("C/ATT", "\(s.completions)/\(s.passAttempts)"), ("YDS", "\(s.passYards)"),
-                        ("TD", "\(s.passTouchdowns)"), ("INT", "\(s.interceptions)"),
-                    ])
-                    StatRow(title: "RUSHING", items: [
-                        ("ATT", "\(s.rushAttempts)"), ("YDS", "\(s.rushYards)"),
-                        ("AVG", String(format: "%.1f", s.rushAverage)), ("TD", "\(s.rushTouchdowns)"),
-                    ])
-                    StatRow(title: "DRIVE", items: [
-                        ("PLAYS", "\(drive.plays)"), ("NET", "\(s.netYards)"),
-                        ("1ST", "\(s.firstDowns)"), ("TOP", drive.timeOfPossession),
-                    ])
+                    StatRow(
+                        title: "PASSING",
+                        items: [
+                            ("C/ATT", "\(s.completions)/\(s.passAttempts)"), ("YDS", "\(s.passYards)"),
+                            ("TD", "\(s.passTouchdowns)"), ("INT", "\(s.interceptions)"),
+                        ])
+                    StatRow(
+                        title: "RUSHING",
+                        items: [
+                            ("ATT", "\(s.rushAttempts)"), ("YDS", "\(s.rushYards)"),
+                            ("AVG", String(format: "%.1f", s.rushAverage)), ("TD", "\(s.rushTouchdowns)"),
+                        ])
+                    StatRow(
+                        title: "DRIVE",
+                        items: [
+                            ("PLAYS", "\(drive.plays)"), ("NET", "\(s.netYards)"),
+                            ("1ST", "\(s.firstDowns)"), ("TOP", drive.timeOfPossession),
+                        ])
                 }
                 .frame(width: 270)
 
@@ -147,7 +155,8 @@ struct DriveRecapDialog: View {
                     Text("PLAY BY PLAY").font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
                     let recent = drive.playByPlay.suffix(6)
                     if drive.playByPlay.count > recent.count {
-                        Text("…\(drive.playByPlay.count - recent.count) EARLIER").font(.pixel(8)).foregroundStyle(.white.opacity(0.45))
+                        Text("…\(drive.playByPlay.count - recent.count) EARLIER").font(.pixel(8)).foregroundStyle(
+                            .white.opacity(0.45))
                     }
                     ForEach(Array(recent.enumerated()), id: \.offset) { _, line in
                         Text(line).font(.pixel(9, .semibold)).foregroundStyle(.white.opacity(0.92))
@@ -245,26 +254,32 @@ struct GameOverDialog: View {
                 .font(.pixel(9, .bold))
                 .padding(.bottom, 4)
                 compare("TOTAL YARDS", h.stats.netYards, a.stats.netYards)
-                compare("PASSING", "\(h.stats.completions)/\(h.stats.passAttempts)  \(h.stats.passYards)",
-                        "\(a.stats.completions)/\(a.stats.passAttempts)  \(a.stats.passYards)",
-                        better: winnerOf(h.stats.passYards, a.stats.passYards))
-                compare("RUSHING", "\(h.stats.rushAttempts)–\(h.stats.rushYards)",
-                        "\(a.stats.rushAttempts)–\(a.stats.rushYards)",
-                        better: winnerOf(h.stats.rushYards, a.stats.rushYards))
-                compare("TOUCHDOWNS", h.stats.passTouchdowns + h.stats.rushTouchdowns,
-                        a.stats.passTouchdowns + a.stats.rushTouchdowns)
+                compare(
+                    "PASSING", "\(h.stats.completions)/\(h.stats.passAttempts)  \(h.stats.passYards)",
+                    "\(a.stats.completions)/\(a.stats.passAttempts)  \(a.stats.passYards)",
+                    better: winnerOf(h.stats.passYards, a.stats.passYards))
+                compare(
+                    "RUSHING", "\(h.stats.rushAttempts)–\(h.stats.rushYards)",
+                    "\(a.stats.rushAttempts)–\(a.stats.rushYards)",
+                    better: winnerOf(h.stats.rushYards, a.stats.rushYards))
+                compare(
+                    "TOUCHDOWNS", h.stats.passTouchdowns + h.stats.rushTouchdowns,
+                    a.stats.passTouchdowns + a.stats.rushTouchdowns)
                 compare("FIRST DOWNS", h.stats.firstDowns, a.stats.firstDowns)
                 compare("TURNOVERS", h.turnovers, a.turnovers, lowerIsBetter: true)
                 compare("SACKED", h.stats.sacks, a.stats.sacks, lowerIsBetter: true)
                 compare("LONGEST PLAY", h.stats.longestPlay, a.stats.longestPlay)
-                compare("POSSESSION", h.timeOfPossession, a.timeOfPossession,
-                        better: winnerOf(Int(h.seconds), Int(a.seconds)))
+                compare(
+                    "POSSESSION", h.timeOfPossession, a.timeOfPossession,
+                    better: winnerOf(Int(h.seconds), Int(a.seconds)))
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(.black.opacity(0.25), in: .rect(cornerRadius: 8))
 
             HStack(spacing: 10) {
-                Button { session.input.send(.snap, from: .touch) } label: {
+                Button {
+                    session.input.send(.snap, from: .touch)
+                } label: {
                     Text("REMATCH").font(.pixel(13, .black)).frame(maxWidth: .infinity).padding(.vertical, 9)
                         .background(homeColor, in: .rect(cornerRadius: 8))
                 }
@@ -383,9 +398,11 @@ struct PlayCardsView: View {
             StatLegend()
             HStack(spacing: 10) {
                 ForEach(Array(h.playCards.enumerated()), id: \.offset) { i, card in
-                    PlayCard(diagram: card, slot: i, selected: h.chosenCard == i,
-                             dimmed: h.chosenCard != nil && h.chosenCard != i)
-                        .onTapGesture { session.input.send(.playSelect(i), from: .touch) }
+                    PlayCard(
+                        diagram: card, slot: i, selected: h.chosenCard == i,
+                        dimmed: h.chosenCard != nil && h.chosenCard != i
+                    )
+                    .onTapGesture { session.input.send(.playSelect(i), from: .touch) }
                 }
             }
         }
@@ -447,8 +464,10 @@ private struct PlayCard: View {
 
     private func draw(_ ctx: inout GraphicsContext, _ size: CGSize) {
         func pt(_ v: Vec2) -> CGPoint {
-            CGPoint(x: CGFloat((v.x - PlayDiagram.minX) / (PlayDiagram.maxX - PlayDiagram.minX)) * size.width,
-                    y: size.height - CGFloat((v.y - PlayDiagram.minY) / (PlayDiagram.maxY - PlayDiagram.minY)) * size.height)
+            CGPoint(
+                x: CGFloat((v.x - PlayDiagram.minX) / (PlayDiagram.maxX - PlayDiagram.minX)) * size.width,
+                y: size.height - CGFloat((v.y - PlayDiagram.minY) / (PlayDiagram.maxY - PlayDiagram.minY)) * size.height
+            )
         }
         let losY = pt(Vec2(0, 0)).y
         var los = Path()
@@ -490,8 +509,9 @@ private struct PlayCard: View {
         let r: CGFloat = 3.2
         for o in diagram.offense {
             let c = pt(o)
-            ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
-                       with: .color(Color(red: 0.55, green: 0.75, blue: 1)), lineWidth: 1.5)
+            ctx.stroke(
+                Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
+                with: .color(Color(red: 0.55, green: 0.75, blue: 1)), lineWidth: 1.5)
         }
         let q = pt(diagram.qb)
         ctx.fill(Path(ellipseIn: CGRect(x: q.x - r, y: q.y - r, width: r * 2, height: r * 2)), with: .color(yellow))
@@ -614,14 +634,15 @@ private struct HoldButton: View {
             .background(color.opacity(held ? 1 : 0.75), in: .circle)
             .overlay(Circle().stroke(.white.opacity(held ? 1 : 0.6), lineWidth: 2))
             .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !held { held = true; onChange(true) }
-                }
-                .onEnded { _ in
-                    held = false
-                    onChange(false)
-                })
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !held { held = true; onChange(true) }
+                    }
+                    .onEnded { _ in
+                        held = false
+                        onChange(false)
+                    })
     }
 }
 
@@ -638,18 +659,19 @@ private struct VirtualStick: View {
         }
         .frame(width: size, height: size)
         .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 0)
-            .onChanged { v in
-                var dx = v.location.x - size / 2, dy = v.location.y - size / 2
-                let len = (dx * dx + dy * dy).squareRoot()
-                if len > travel { dx *= travel / len; dy *= travel / len }
-                knob = CGSize(width: dx, height: dy)
-                onMove(Vec2(Float(dx / travel), Float(-dy / travel)))
-            }
-            .onEnded { _ in
-                knob = .zero
-                onMove(.zero)
-            })
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    var dx = v.location.x - size / 2, dy = v.location.y - size / 2
+                    let len = (dx * dx + dy * dy).squareRoot()
+                    if len > travel { dx *= travel / len; dy *= travel / len }
+                    knob = CGSize(width: dx, height: dy)
+                    onMove(Vec2(Float(dx / travel), Float(-dy / travel)))
+                }
+                .onEnded { _ in
+                    knob = .zero
+                    onMove(.zero)
+                })
     }
 }
 
@@ -662,8 +684,10 @@ struct DevOverlay: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(String(format: "%.0f FPS  cpu %.2fms  sim %.3fms", d.fps, d.cpuMs, d.simMs))
-                Text(String(format: "gpu cull+shadow %.2f  scene %.2f  post %.2f ms",
-                            d.gpuCullShadow, d.gpuScene, d.gpuPost))
+                Text(
+                    String(
+                        format: "gpu cull+shadow %.2f  scene %.2f  post %.2f ms",
+                        d.gpuCullShadow, d.gpuScene, d.gpuPost))
                 Text(String(format: "scale %.2f  %@", d.renderScale, d.renderSize))
                 Text("crowd \(d.crowd)  players \(d.players)  draws \(d.drawCalls)")
                 Text("MetalFX \(d.metalFX ? "on" : "off")  residency \(d.residency ? "on" : "off")")

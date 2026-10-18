@@ -27,10 +27,12 @@ public struct GameSimulation: Sendable {
     /// Jumps the game clock (tests and debug screens that need a late-game situation).
     public mutating func setGameClock(quarter: Int, clock: Float) { match.setGameClock(quarter: quarter, clock: clock) }
 
-    public mutating func setRoster(offense: [Position: Match.RosterEntry],
-                                   defense: [Position: Match.RosterEntry],
-                                   opponentOffense: [Position: Match.RosterEntry] = [:],
-                                   homeDefense: [Position: Match.RosterEntry] = [:]) {
+    public mutating func setRoster(
+        offense: [Position: Match.RosterEntry],
+        defense: [Position: Match.RosterEntry],
+        opponentOffense: [Position: Match.RosterEntry] = [:],
+        homeDefense: [Position: Match.RosterEntry] = [:]
+    ) {
         match.setRoster(offense: offense, defense: defense, opponentOffense: opponentOffense, homeDefense: homeDefense)
     }
 }

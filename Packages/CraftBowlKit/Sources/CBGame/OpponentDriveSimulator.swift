@@ -152,7 +152,8 @@ struct OpponentDriveSimulator {
                 let kickDistance = Int((Field.goalLine - los).rounded()) + 17
                 let trailingLate = quarter == 4 && clock < 75 && scoreDelta + points < 0
                 let shortYardage = toGo <= 1.5 && los >= 55
-                let goForIt = trailingLate && (scoreDelta + points < -3 || kickDistance > 52)
+                let goForIt =
+                    trailingLate && (scoreDelta + points < -3 || kickDistance > 52)
                     || (shortYardage && kickDistance > 45 && rng.unitFloat() < 0.6)
                 if !goForIt && kickDistance <= 54 {
                     plays += 1
@@ -209,7 +210,8 @@ struct OpponentDriveSimulator {
                 ending = .interception
                 endLine = los
                 let userSpot = Match.mirrored(r.spot.y)
-                userLOS = userSpot <= Field.ownGoalLine
+                userLOS =
+                    userSpot <= Field.ownGoalLine
                     ? Field.ownGoalLine + 20 : clamp(userSpot.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
                 break driveLoop
             case .incomplete:
@@ -257,7 +259,8 @@ struct OpponentDriveSimulator {
                 break
             }
 
-            let spot = r.outcome == .incomplete ? los : clamp(r.spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
+            let spot =
+                r.outcome == .incomplete ? los : clamp(r.spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
             if spot >= firstDown {
                 stats.firstDowns += 1
                 los = spot

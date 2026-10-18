@@ -92,8 +92,9 @@ final class GameOverTests: XCTestCase {
         XCTAssertEqual(away.seconds, drive.seconds, accuracy: 0.001)
         XCTAssertEqual(away.turnovers, drive.ending == .interception || drive.ending == .downs ? 1 : 0)
         if sim.match.quarter == 1 {
-            XCTAssertEqual(home.seconds + away.seconds, Match.quarterSeconds - sim.match.clock, accuracy: 0.05,
-                           "time of possession adds up to the game clock used")
+            XCTAssertEqual(
+                home.seconds + away.seconds, Match.quarterSeconds - sim.match.clock, accuracy: 0.05,
+                "time of possession adds up to the game clock used")
         }
     }
 

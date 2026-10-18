@@ -123,9 +123,10 @@ private enum TitleLogoScene {
 
     private static func shake(from home: SCNVector3) -> SCNAction {
         let offsets: [(Float, Float)] = [(0.05, -0.03), (-0.04, 0.035), (0.025, -0.02), (-0.012, 0.01), (0, 0)]
-        return .sequence(offsets.map { dx, dy in
-            SCNAction.move(to: SCNVector3(home.x + dx, home.y + dy, home.z), duration: 0.045)
-        })
+        return .sequence(
+            offsets.map { dx, dy in
+                SCNAction.move(to: SCNVector3(home.x + dx, home.y + dy, home.z), duration: 0.045)
+            })
     }
 
     /// Slow twist (yaw ±15°) and tilt (pitch ±5°) on different periods so the motion never looks mechanical.

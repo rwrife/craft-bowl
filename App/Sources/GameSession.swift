@@ -221,7 +221,7 @@ final class GameSession: RenderFrameSource {
     }
 
     #if DEBUG
-    func debugSetGameClock(quarter: Int, clock: Float) { sim.setGameClock(quarter: quarter, clock: clock) }
+        func debugSetGameClock(quarter: Int, clock: Float) { sim.setGameClock(quarter: quarter, clock: clock) }
     #endif
 
     func beginGameplay() {
@@ -579,8 +579,9 @@ final class GameSession: RenderFrameSource {
             for (slot, i) in losers.enumerated() {
                 let k = Float(slot)
                 let walk = min(t * 0.7, 9)
-                let p = Vec2((k - Float(losers.count - 1) / 2) * 3.1 + sinf(k * 1.3) * 1.2,
-                             center.y + 9 + walk + Float(slot % 3) * 1.4)
+                let p = Vec2(
+                    (k - Float(losers.count - 1) / 2) * 3.1 + sinf(k * 1.3) * 1.2,
+                    center.y + 9 + walk + Float(slot % 3) * 1.4)
                 frame.players[i].position = fieldToWorld(p)
                 let resting = slot % 3 == 1
                 frame.players[i].yaw = resting ? .pi * 0.85 : 0
