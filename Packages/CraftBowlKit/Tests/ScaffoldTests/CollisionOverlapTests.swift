@@ -12,7 +12,7 @@ final class CollisionOverlapTests: XCTestCase {
         let standing = world.players.filter { !$0.isDown }
         var worst: Float = 0
         for (i, a) in standing.enumerated() {
-            for b in standing[(i + 1)...] where !(a.isDiving && b.isDiving) {
+            for b in standing[(i + 1)...] {
                 worst = max(worst, minDist - a.location.distance(to: b.location))
             }
         }
@@ -44,6 +44,40 @@ final class CollisionOverlapTests: XCTestCase {
         world.step(intents: [:])
         XCTAssertGreaterThanOrEqual(
             world[other].location.distance(to: world[diver].location), minDist - slack)
+    }
+
+    /// Divers can meet head-on; both must separate without changing their lunge velocities.
+    func testTwoDiversSeparateAndReportContactOnce() {
+        var world = World(seed: 41)
+        let rating = Ratings(power: 50, speed: 50, endurance: 50)
+        let a = world.spawn(.lt, ratings: rating, number: 1, at: Vec2(0, 40))
+        let b = world.spawn(.deL, ratings: rating, number: 2, at: Vec2(0, 40))
+        world.startDive(a)
+        world.startDive(b)
+        let velocityA = world[a].velocity, velocityB = world[b].velocity
+        world.step(intents: [:])
+        XCTAssertTrue(world[a].isDiving && world[b].isDiving)
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+        XCTAssertEqual(world.events.filter { $0 == .contact(a, b) }.count, 1)
+        XCTAssertEqual(world[a].velocity.x, velocityA.x * 0.965, accuracy: 1e-5)
+        XCTAssertEqual(world[a].velocity.y, velocityA.y * 0.965, accuracy: 1e-5)
+        XCTAssertEqual(world[b].velocity.x, velocityB.x * 0.965, accuracy: 1e-5)
+        XCTAssertEqual(world[b].velocity.y, velocityB.y * 0.965, accuracy: 1e-5)
+    }
+
+    func testSameSideDiversSeparateWithoutOpponentContact() {
+        var world = World(seed: 42)
+        let rating = Ratings(power: 50, speed: 50, endurance: 50)
+        let a = world.spawn(.lt, ratings: rating, number: 1, at: Vec2(0, 40))
+        let b = world.spawn(.lg, ratings: rating, number: 2, at: Vec2(0, 40))
+        world.startDive(a)
+        world.startDive(b)
+        world.step(intents: [:])
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+        XCTAssertFalse(
+            world.events.contains {
+                if case .contact = $0 { return true }; return false
+            })
     }
 
     /// Dense piles must resolve within the current tick, not over several frames of clipping.
