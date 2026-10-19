@@ -295,11 +295,18 @@ public struct World: Sendable {
                     let normal = dist > 1e-4 ? d / dist : Vec2(1, 0)
                     let overlap = minDist - dist
                     let pa = curves.blockStrength(players[a].ratings), pb = curves.blockStrength(players[b].ratings)
-                    // A diver cannot be displaced; give the full push to the standing player.
-                    // Standing pairs retain Power-weighted separation.
-                    let wa = players[b].isDiving ? Float(1) : players[a].isDiving ? Float(0) : pb / (pa + pb)
-                    if !players[a].isDiving { players[a].location -= normal * overlap * wa }
-                    if !players[b].isDiving { players[b].location += normal * overlap * (1 - wa) }
+                    // A single diver keeps its lunge path; the standing player takes the full push.
+                    // When both dive, separate their positions without changing either velocity.
+                    let wa =
+                        players[a].isDiving && players[b].isDiving
+                        ? pb / (pa + pb)
+                        : players[b].isDiving ? Float(1) : players[a].isDiving ? Float(0) : pb / (pa + pb)
+                    if !players[a].isDiving || players[b].isDiving {
+                        players[a].location -= normal * overlap * wa
+                    }
+                    if !players[b].isDiving || players[a].isDiving {
+                        players[b].location += normal * overlap * (1 - wa)
+                    }
                 }
             }
             applyWalls()
