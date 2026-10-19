@@ -11,6 +11,10 @@
   - Added test cases in `CollisionOverlapTests` verifying head-on divers separate within one tick and report one contact event without modifying lunge velocity, and same-side divers separate without contact events.
   - Verified TDD RED on base (`0.62435514 > 0.005` overlap), then GREEN (58/58 tests passed in Docker Swift 6.0 platform-neutral mirror).
   - RNG check clean (22 files scanned) and `swift-format lint --strict` clean.
+  - Independent hash-bound review: round 1 FAIL (velocity test checked x only); fixed to assert x and y, canary-proved (injected velocity zeroing failed 2 assertions, restored), round 2 PASS on tree `e614e91b`.
+  - Opened and squash-merged [PR #95](https://github.com/rwrife/craft-bowl/pull/95) (`Advances #25`, head `800ebc5`) at `f0571e384ed4b56ac47a22c41e2617cc3fb43f87` on `2026-10-19T09:59:01Z`; issue [#25](https://github.com/rwrife/craft-bowl/issues/25) remains OPEN. Posted [bounded-slice evidence](https://github.com/rwrife/craft-bowl/issues/25#issuecomment-6264767744).
+  - CI: hosted build run [39228422097](https://github.com/rwrife/craft-bowl/actions/runs/39228422097) attempt 1 was runner-cancelled at the final `Build app (iOS Simulator)` step (all test/lint/determinism steps green); rerun attempt 2 passed in 9m49s. `mergeStateStatus=CLEAN` at head `800ebc52` before merge.
+  - Final state synced in narrow docs PR (no second issue implementation).
 - Verification: Docker Swift 6.0 mirror passed 58/58 unit tests with `-Xswiftc -warnings-as-errors`. Seeded RNG lint passed. Changed Swift lint passed.
 - Blockers: Linux runner lacks local Xcode/Metal/iOS simulator toolchain; local tests run in Docker. Issue #25 remains OPEN for universal collision guarantees across all scrums and broader navigation.
 
