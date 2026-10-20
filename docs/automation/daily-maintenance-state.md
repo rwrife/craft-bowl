@@ -9,7 +9,7 @@
 - TDD RED: eight coincident players against clamped sideline overlapped by `0.45473844` yards after first tick (> `0.005` tolerance). GREEN: pair-derived radial fallback normal kept same 24-iteration bound, collision contact and diver behavior unchanged; focused 14/14 and full 59/59 platform-neutral Swift tests passed in `swift:6.0-noble` Docker mirror with `-Xswiftc -warnings-as-errors`.
 - `bash scripts/check-sim-rng.sh` PASS (22 files scanned); Docker `swift-format lint --strict --configuration .swift-format` on both changed Swift files PASS; staged diff check PASS. Linux lacks local Xcode/Metal/iOS Simulator; native build awaits hosted CI.
 - Independent read-only review PASS on exact staged tree `4b9691c5ec6ad6ad57bdbaaedfee88629bfdf15e`, SHA256 `75ceb74faaebd87829250196acd5e13152971a3267585d5725fb7a9ec66b6d09`; zero blockers, coincident-wall coverage explicitly partial. Commit `3b675153452e652b2a4c7911cf9734536875fa32` pushed; opened [PR #97](https://github.com/rwrife/craft-bowl/pull/97) with `Advances #25`; #25 stays OPEN.
-- CI/merge outcome: pending; do not assume approval before exact-head checks. State remains tracked here for next PR-first run.
+- CI/merge outcome: exact-head CI [39398844342](https://github.com/rwrife/craft-bowl/actions/runs/39398844342) on `74b9bde4a40a15c3e7624ffa7029319dcf0ebb27` SUCCESS (macOS host tests, metallib `-Werror`, changed-file lint, RNG lint, iOS Simulator app tests + build all green). PR #97 squash-merged `2026-10-20T09:39:38Z` as `3b93f5bbac81220fea236b710756028b00bd9bfa`. Issue #25 verified still OPEN (partial slice, `Advances` keyword). Remaining #25 gaps: universal zero-overlap across hostile dense layouts and live AI pathing evidence.
 
 ## 2026-10-19 run
 
