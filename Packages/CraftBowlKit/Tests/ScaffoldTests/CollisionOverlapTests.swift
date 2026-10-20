@@ -196,6 +196,19 @@ final class CollisionOverlapTests: XCTestCase {
         XCTAssertLessThanOrEqual(previous, slack)
     }
 
+    /// Coincident players against a sideline must separate within the same tick.
+    func testCoincidentSidelinePileSeparatesOnFirstTick() {
+        var world = World(seed: 61)
+        let x = Field.wallHalfWidth - World.playerRadius
+        let rating = Ratings(power: 50, speed: 50, endurance: 50)
+        for i in 0..<8 {
+            world.spawn(i % 2 == 0 ? .lt : .deL, ratings: rating, number: i, at: Vec2(x, 40))
+        }
+        world.step(intents: [:])
+        XCTAssertLessThanOrEqual(worstOverlap(world), slack)
+        XCTAssertTrue(world.players.allSatisfy { $0.location.x <= x + 1e-4 })
+    }
+
     /// Bounded collision relaxation must keep dense-pile resolution deterministic.
     func testResolutionIsDeterministic() {
         func run() -> UInt64 {

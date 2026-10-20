@@ -292,7 +292,15 @@ public struct World: Sendable {
                             events.append(.contact(players[a].id, players[b].id))
                         }
                     }
-                    let normal = dist > 1e-4 ? d / dist : Vec2(1, 0)
+                    let normal: Vec2
+                    if dist > 1e-4 {
+                        normal = d / dist
+                    } else {
+                        // Spread coincident pairs over a full turn based on pair indices so the cluster
+                        // fans out radially rather than stacking along the same clamped wall axis.
+                        let angle = Float((a * 7 + b * 13) % 24) * (.pi / 12)
+                        normal = Vec2(cos(angle), sin(angle))
+                    }
                     let overlap = minDist - dist
                     let pa = curves.blockStrength(players[a].ratings), pb = curves.blockStrength(players[b].ratings)
                     // A single diver keeps its lunge path; the standing player takes the full push.
