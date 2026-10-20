@@ -1,5 +1,16 @@
 # Daily maintenance state
 
+## 2026-10-20 run (PR checkpoint)
+
+- Timestamp: `2026-10-20T07:46:56Z` selection; base `112dcd4acf07ad0d619beb35f4cb637990bbc8a2`; main [CI 39239707366](https://github.com/rwrife/craft-bowl/actions/runs/39239707366) SUCCESS. GitHub preflight passed with write permission.
+- Open PR snapshot: 0; PR-first pass had no PRs to review, merge, or block. Open issue snapshot: 55 (#4–#23, #25–#59).
+- Closure audit: #4/#5 require interactive runtime evidence. #25 still lacks universal non-overlap proof across hostile dense layouts and broader navigation. No premature closure.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25): bounded coincident-wall collision slice. Dedicated branch `fix/issue-25-coincident-wall`, worktree `.worktrees/issue-25-coincident-wall`; prior retained worktrees untouched.
+- TDD RED: eight coincident players against clamped sideline overlapped by `0.45473844` yards after first tick (> `0.005` tolerance). GREEN: pair-derived radial fallback normal kept same 24-iteration bound, collision contact and diver behavior unchanged; focused 14/14 and full 59/59 platform-neutral Swift tests passed in `swift:6.0-noble` Docker mirror with `-Xswiftc -warnings-as-errors`.
+- `bash scripts/check-sim-rng.sh` PASS (22 files scanned); Docker `swift-format lint --strict --configuration .swift-format` on both changed Swift files PASS; staged diff check PASS. Linux lacks local Xcode/Metal/iOS Simulator; native build awaits hosted CI.
+- Independent read-only review PASS on exact staged tree `4b9691c5ec6ad6ad57bdbaaedfee88629bfdf15e`, SHA256 `75ceb74faaebd87829250196acd5e13152971a3267585d5725fb7a9ec66b6d09`; zero blockers, coincident-wall coverage explicitly partial. Commit `3b675153452e652b2a4c7911cf9734536875fa32` pushed; opened [PR #97](https://github.com/rwrife/craft-bowl/pull/97) with `Advances #25`; #25 stays OPEN.
+- CI/merge outcome: pending; do not assume approval before exact-head checks. State remains tracked here for next PR-first run.
+
 ## 2026-10-19 run
 
 - Timestamp: `2026-10-19T06:29:58Z` (start); base `46e9189` -> merge candidate; GitHub access passed.
