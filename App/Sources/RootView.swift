@@ -172,6 +172,7 @@ struct RootView: View {
                     HUDView(session: session)
                     TouchControls(session: session)
                     DriveRecapDialog(session: session)
+                    HalftimeDialog(session: session)
                     GameOverDialog(session: session) {
                         session.enterAttractMode()
                         screen = .title

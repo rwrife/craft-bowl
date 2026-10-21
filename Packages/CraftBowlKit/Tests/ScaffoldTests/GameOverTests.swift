@@ -69,6 +69,60 @@ final class GameOverTests: XCTestCase {
         XCTAssertTrue(sim.match.isGameOver, "a late button from the last play doesn't skip the final screen")
     }
 
+    func testHalftimeHoldsStatsAndResumesWithFreshKickoff() throws {
+        var sim = try makeSim(seed: 59)
+        sim.setGameClock(quarter: 2, clock: 0.3)
+        var ticks = 0
+        while !sim.match.isHalftime && ticks < 60 * 60 {
+            tickHoldingTheBall(&sim)
+            ticks += 1
+        }
+        XCTAssertTrue(sim.match.isHalftime)
+        XCTAssertFalse(sim.match.isGameOver)
+        XCTAssertEqual(sim.match.quarter, 3)
+        XCTAssertEqual(sim.match.clock, Match.quarterSeconds)
+        let summary = sim.match.gameSummary
+        XCTAssertEqual(summary.home.stats.plays, 1)
+        let checksum = sim.world.checksum
+        for _ in 0..<(Match.halftimeMinTicks - 1) { sim.tick(TickInput(buttons: [.snap])) }
+        XCTAssertTrue(sim.match.isHalftime, "late input must not skip the show")
+        XCTAssertEqual(sim.world.checksum, checksum, "show must not advance gameplay")
+        XCTAssertEqual(sim.match.gameSummary, summary)
+        sim.tick(TickInput(buttons: [.snap]))
+        XCTAssertFalse(sim.match.isHalftime)
+        XCTAssertEqual(sim.match.quarter, 3)
+        XCTAssertEqual(sim.match.clock, Match.quarterSeconds)
+        XCTAssertEqual(sim.match.phase, .preSnap)
+        XCTAssertEqual(sim.match.down, 1)
+        XCTAssertEqual(sim.match.lineOfScrimmage, Match.kickoffYardLine)
+        XCTAssertEqual(sim.match.gameSummary, summary, "second-half kickoff must retain first-half stats")
+    }
+
+    func testOpponentDriveRecapPrecedesHalftime() throws {
+        var found = false
+        for seed in UInt64(1)...40 {
+            var sim = try makeSim(seed: seed)
+            sim.setGameClock(quarter: 2, clock: 16)
+            var ticks = 0
+            while sim.match.opponentDrive == nil && !sim.match.isHalftime && ticks < 60 * 120 {
+                tickHoldingTheBall(&sim)
+                ticks += 1
+            }
+            guard let drive = sim.match.opponentDrive, drive.ending == .endOfHalf else { continue }
+            found = true
+            for _ in 0...Match.deadBallTicks { sim.tick(.none) }
+            XCTAssertTrue(sim.match.isShowingDriveRecap)
+            XCTAssertFalse(sim.match.isHalftime)
+            for _ in 0..<Match.driveRecapMinTicks { sim.tick(.none) }
+            sim.tick(TickInput(buttons: [.snap]))
+            XCTAssertTrue(sim.match.isHalftime)
+            XCTAssertNil(sim.match.opponentDrive)
+            XCTAssertEqual(sim.match.quarter, 3)
+            break
+        }
+        XCTAssertTrue(found, "some seed should let the opponent run out the first half")
+    }
+
     func testBoxScoresTrackBothTeams() throws {
         var sim = try makeSim(seed: 77)
         var outcomes: [PlayOutcome] = []

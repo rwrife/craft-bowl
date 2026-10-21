@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-21 run (selection checkpoint)
+
+- Timestamp: `2026-10-21T06:49:45Z`; base `328542778bd3288fba6a3121af77e5ad02ce9716`. GitHub access passed; main [CI 39405621751](https://github.com/rwrife/craft-bowl/actions/runs/39405621751) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 remain runtime-evidence-gated; #25 still lacks universal non-overlap proof; no premature closure.
+- Selected [#59](https://github.com/rwrife/craft-bowl/issues/59): halftime and game-end stats show with return-to-title action. Implemented `Match.isHalftime` transition at Q2 end, hold stats across halftime, `HalftimeDialog` SwiftUI overlay with stats comparison, cheerleader stand-in dance frame in `GameSession`, and verified return-to-title button in `GameOverDialog`. Branch `feat/issue-59-halftime`, dedicated worktree `.worktrees/issue-59-halftime`.
+- Actions: PR-first snapshot and issue selection; implemented halftime logic and unit tests; Dockerized test suite passed; PR creation pending. Blockers: Linux has no local Xcode/iOS simulator; native validation requires CI.
+
 ## 2026-10-20 run (PR checkpoint)
 
 - Timestamp: `2026-10-20T07:46:56Z` selection; base `112dcd4acf07ad0d619beb35f4cb637990bbc8a2`; main [CI 39239707366](https://github.com/rwrife/craft-bowl/actions/runs/39239707366) SUCCESS. GitHub preflight passed with write permission.
