@@ -5,7 +5,7 @@
 - Timestamp: `2026-10-21T06:49:45Z`; base `328542778bd3288fba6a3121af77e5ad02ce9716`. GitHub access passed; main [CI 39405621751](https://github.com/rwrife/craft-bowl/actions/runs/39405621751) SUCCESS.
 - Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 remain runtime-evidence-gated; #25 still lacks universal non-overlap proof; no premature closure.
 - Selected [#59](https://github.com/rwrife/craft-bowl/issues/59): halftime and game-end stats show with return-to-title action. Implemented `Match.isHalftime` transition at Q2 end, hold stats across halftime, `HalftimeDialog` SwiftUI overlay with stats comparison, cheerleader stand-in dance frame in `GameSession`, and verified return-to-title button in `GameOverDialog`. Branch `feat/issue-59-halftime`, dedicated worktree `.worktrees/issue-59-halftime`.
-- Actions: PR-first snapshot and issue selection; implemented halftime logic and unit tests; Dockerized test suite passed; PR creation pending. Blockers: Linux has no local Xcode/iOS simulator; native validation requires CI.
+- Actions: PR-first snapshot and issue selection; implemented halftime logic and unit tests; Docker Swift 6 focused `GameOverTests` 6/6 PASS, app-source `swiftc -frontend -parse` PASS, `scripts/check-sim-rng.sh` PASS (22 files), staged diff review PASS at `e41da5286abeecd54c7a1c4fa5e8d544d0d6a95f`. Commit `5308f85` pushed. Draft [PR #99](https://github.com/rwrife/craft-bowl/pull/99) opened; CI pending. Blockers: Linux canonical Swift package test cannot compile Apple `simd` module; native SwiftUI build/simulator CI required. Issue remains open for dedicated assets/native show acceptance.
 
 ## 2026-10-20 run (PR checkpoint)
 
