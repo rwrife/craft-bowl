@@ -34,6 +34,7 @@ struct HUDState: Equatable {
     var showDriveRecap = false
     /// Both teams' final numbers once the game is over (nil while it's still being played).
     var gameOver: GameSummary?
+    var halftime: GameSummary?
 }
 
 /// Dev overlay numbers, refreshed ~4×/s.
@@ -109,6 +110,7 @@ final class GameSession: RenderFrameSource {
     @ObservationIgnored private var autoThrowTick = 70
     @ObservationIgnored private var recapTime: Float = 0
     @ObservationIgnored private var celebrationTime: Float = 0
+    @ObservationIgnored private var halftimeTime: Float = 0
     @ObservationIgnored private var frameCount = 0
     @ObservationIgnored private var statsWindowStart = CACurrentMediaTime()
     @ObservationIgnored private var lastSimMs: Float = 0
@@ -398,6 +400,10 @@ final class GameSession: RenderFrameSource {
             if m.driveRecapElapsedTicks >= 60 * 4 { t.buttons.insert(.snap) }
             return t
         }
+        if m.isHalftime {
+            if m.phaseTicks >= 60 * 6 { t.buttons.insert(.snap) }
+            return t
+        }
         if m.isGameOver {
             if m.phaseTicks >= 60 * 8 { t.buttons.insert(.snap) }
             return t
@@ -524,6 +530,55 @@ final class GameSession: RenderFrameSource {
         } else {
             celebrationTime = 0
         }
+        if m.isHalftime {
+            halftimeTime += realDt
+            buildHalftimeFrame(&frame)
+        } else {
+            halftimeTime = 0
+        }
+    }
+
+    /// Halftime stand-in: player models form a dancing kick line until dedicated cheerleader assets land.
+    private func buildHalftimeFrame(_ frame: inout RenderFrame) {
+        let t = halftimeTime
+        let rowY: Float = 55
+        // A row of twelve facing the broadcast camera.
+        while frame.players.count < 12 {
+            frame.players.append(
+                PlayerDraw(
+                    position: fieldToWorld(Vec2(0, rowY)), yaw: .pi, team: 0, pose: .celebrate))
+        }
+        if frame.players.count > 12 { frame.players.removeLast(frame.players.count - 12) }
+        for (i, playerIndex) in frame.players.indices.enumerated() {
+            let slot = Float(i) - 5.5
+            let beat = t * 3.2 + Float(i) * 0.45
+            // Side-to-side kick line with a bob, plus one cheerleader breaking into a spin each cycle.
+            let kicker = i.isMultiple(of: 2)
+            let bounce = abs(sinf(beat)) * (kicker ? 0.45 : 0.25)
+            let x = slot * 2.1 + sinf(t * 1.6) * 0.4
+            let y = rowY + (kicker ? 0 : 1.1)
+            frame.players[playerIndex].position = fieldToWorld(Vec2(x, y), height: bounce)
+            let spinner = Int(t / 2.0) % 12 == i
+            let sway = sinf(beat) * 0.3
+            frame.players[playerIndex].yaw = .pi + (spinner ? t * 8 : sway)
+            frame.players[playerIndex].pose = .celebrate
+            frame.players[playerIndex].phase = beat
+            frame.players[playerIndex].speed01 = 0.4
+            frame.players[playerIndex].number = 0
+            frame.players[playerIndex].scale = SIMD3(0.82, 0.92, 0.82)
+            frame.players[playerIndex].turbo = false
+            frame.players[playerIndex].controlled = false
+        }
+        let drift = sinf(t * 0.3) * 2
+        frame.camera.eye = fieldToWorld(Vec2(drift, rowY - 15), height: 3.4)
+        frame.camera.target = fieldToWorld(Vec2(drift * 0.3, rowY), height: 1.4)
+        frame.camera.fovY = 0.72
+        frame.ballVisible = false
+        frame.showLines = false
+        frame.markers.removeAll(keepingCapacity: true)
+        frame.statBars.removeAll(keepingCapacity: true)
+        frame.debugLines.removeAll(keepingCapacity: true)
+        frame.crowdExcitement = 0.75
     }
 
     /// Behind the final-score dialog. The winners mob midfield: a bouncing huddle circling a teammate hoisted
@@ -803,6 +858,7 @@ final class GameSession: RenderFrameSource {
         h.opponentDrive = m.opponentDrive
         h.showDriveRecap = m.isShowingDriveRecap
         h.gameOver = m.isGameOver ? m.gameSummary : nil
+        h.halftime = m.isHalftime ? m.gameSummary : nil
         h.phase = m.phase
         h.playName = m.offensePlay.name.uppercased()
         h.defenseName = m.defensePlay.name.uppercased()

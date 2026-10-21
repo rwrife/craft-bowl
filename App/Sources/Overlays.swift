@@ -74,7 +74,7 @@ struct HUDView: View {
                 .padding(.bottom, 20)
             }
         }
-        .opacity(h.gameOver == nil ? 1 : 0)
+        .opacity(h.gameOver == nil && h.halftime == nil ? 1 : 0)
         .allowsHitTesting(false)
     }
 }
@@ -303,6 +303,124 @@ struct GameOverDialog: View {
     private func scoreSide(_ name: String, _ score: Int, _ color: Color, won: Bool, trailing: Bool = false)
         -> some View
     {
+        ScoreSide(name: name, score: score, color: color, won: won, trailing: trailing)
+    }
+
+    private func compare(_ label: String, _ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> some View {
+        StatCompareRow(label, home, away, lowerIsBetter: lowerIsBetter)
+    }
+
+    private func compare(_ label: String, _ home: String, _ away: String, better: Int) -> some View {
+        StatCompareRow(label, home, away, better: better)
+    }
+
+    private func winnerOf(_ home: Int, _ away: Int) -> Int {
+        StatCompareRow.winner(home, away)
+    }
+}
+
+/// Halftime show: a cheerleader routine runs behind this translucent box-score card. Continue goes
+/// through the same input stream as the rest of the game so a controller can dismiss it too.
+struct HalftimeDialog: View {
+    let session: GameSession
+    @State private var appeared = false
+
+    var body: some View {
+        if let summary = session.hud.halftime {
+            ZStack(alignment: .trailing) {
+                LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: .leading, endPoint: .trailing)
+                    .ignoresSafeArea()
+                card(summary)
+                    .padding(.trailing, 40)
+                    .offset(x: appeared ? 0 : 80)
+                    .opacity(appeared ? 1 : 0)
+            }
+            .onAppear { withAnimation(.spring(duration: 0.5).delay(0.4)) { appeared = true } }
+            .onDisappear { appeared = false }
+        }
+    }
+
+    private func card(_ g: GameSummary) -> some View {
+        let homeName = session.homeTeam?.abbreviation ?? "BLUE"
+        let awayName = session.awayTeam?.abbreviation ?? "RED"
+        let homeColor = session.homeTeam?.primaryColor ?? homeBlue
+        let awayColor = session.awayTeam?.primaryColor ?? awayRed
+        let h = g.home, a = g.away
+        return VStack(spacing: 10) {
+            VStack(spacing: 2) {
+                Text("HALFTIME").font(.pixel(11, .bold)).foregroundStyle(.white.opacity(0.7))
+                Text("THE CHEERLEADERS TAKE THE FIELD").font(.pixel(16, .black)).foregroundStyle(.yellow)
+                    .shadow(color: .black.opacity(0.7), radius: 0, x: 2, y: 2)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+            }
+
+            HStack(spacing: 0) {
+                ScoreSide(name: homeName, score: g.homeScore, color: homeColor, won: g.winner == .home)
+                Text("–").font(.pixel(22, .black)).foregroundStyle(.white.opacity(0.6)).frame(width: 30)
+                ScoreSide(
+                    name: awayName, score: g.awayScore, color: awayColor,
+                    won: g.winner == .away, trailing: true)
+            }
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text(homeName).foregroundStyle(homeColor.mix(with: .white, by: 0.35))
+                    Spacer()
+                    Text("HALFTIME STATS").foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Text(awayName).foregroundStyle(awayColor.mix(with: .white, by: 0.35))
+                }
+                .font(.pixel(9, .bold))
+                .padding(.bottom, 4)
+                StatCompareRow("TOTAL YARDS", h.stats.netYards, a.stats.netYards)
+                StatCompareRow(
+                    "PASSING",
+                    "\(h.stats.completions)/\(h.stats.passAttempts)  \(h.stats.passYards)",
+                    "\(a.stats.completions)/\(a.stats.passAttempts)  \(a.stats.passYards)",
+                    better: StatCompareRow.winner(h.stats.passYards, a.stats.passYards))
+                StatCompareRow(
+                    "RUSHING", "\(h.stats.rushAttempts)–\(h.stats.rushYards)",
+                    "\(a.stats.rushAttempts)–\(a.stats.rushYards)",
+                    better: StatCompareRow.winner(h.stats.rushYards, a.stats.rushYards))
+                StatCompareRow(
+                    "TOUCHDOWNS", h.stats.passTouchdowns + h.stats.rushTouchdowns,
+                    a.stats.passTouchdowns + a.stats.rushTouchdowns)
+                StatCompareRow("FIRST DOWNS", h.stats.firstDowns, a.stats.firstDowns)
+                StatCompareRow("TURNOVERS", h.turnovers, a.turnovers, lowerIsBetter: true)
+                StatCompareRow("SACKED", h.stats.sacks, a.stats.sacks, lowerIsBetter: true)
+                StatCompareRow("LONGEST PLAY", h.stats.longestPlay, a.stats.longestPlay)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(.black.opacity(0.25), in: .rect(cornerRadius: 8))
+
+            HStack {
+                Text("2ND HALF KICKOFF").font(.pixel(12, .black)).padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(homeColor, in: .rect(cornerRadius: 8))
+                Spacer()
+                Text("TAP OR PRESS ANY BUTTON").font(.pixel(9, .bold)).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { session.input.send(.snap, from: .touch) }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(width: 380)
+        .background(.ultraThinMaterial.opacity(0.9), in: .rect(cornerRadius: 16))
+        .background(panel.opacity(0.35), in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.yellow.opacity(0.75), lineWidth: 2))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private struct ScoreSide: View {
+    let name: String
+    let score: Int
+    let color: Color
+    let won: Bool
+    var trailing = false
+
+    var body: some View {
         HStack(spacing: 8) {
             if trailing { Text("\(score)").font(.pixel(34, .black)).foregroundStyle(won ? .yellow : .white) }
             Text(name).font(.pixel(14, .black)).padding(.horizontal, 10).padding(.vertical, 6)
@@ -312,17 +430,31 @@ struct GameOverDialog: View {
         }
         .frame(maxWidth: .infinity, alignment: trailing ? .leading : .trailing)
     }
+}
 
+struct StatCompareRow: View {
+    let label: String
+    let home: String
+    let away: String
     /// -1 home better, 1 away better, 0 even.
-    private func winnerOf(_ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> Int {
+    let better: Int
+
+    init(_ label: String, _ home: String, _ away: String, better: Int) {
+        self.label = label
+        self.home = home
+        self.away = away
+        self.better = better
+    }
+
+    init(_ label: String, _ home: Int, _ away: Int, lowerIsBetter: Bool = false) {
+        self.init(label, "\(home)", "\(away)", better: Self.winner(home, away, lowerIsBetter: lowerIsBetter))
+    }
+
+    static func winner(_ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> Int {
         home == away ? 0 : ((home > away) != lowerIsBetter ? -1 : 1)
     }
 
-    private func compare(_ label: String, _ home: Int, _ away: Int, lowerIsBetter: Bool = false) -> some View {
-        compare(label, "\(home)", "\(away)", better: winnerOf(home, away, lowerIsBetter: lowerIsBetter))
-    }
-
-    private func compare(_ label: String, _ home: String, _ away: String, better: Int) -> some View {
+    var body: some View {
         HStack {
             Text(home).font(.pixel(12, better < 0 ? .black : .semibold))
                 .foregroundStyle(better < 0 ? .yellow : .white.opacity(0.85))
@@ -536,12 +668,12 @@ struct TouchControls: View {
         HStack(alignment: .bottom) {
             VirtualStick { send(.move($0)) }
                 .padding(.leading, 40)
-                .opacity(h.showDriveRecap || h.gameOver != nil ? 0 : 1)
+                .opacity(h.showDriveRecap || h.gameOver != nil || h.halftime != nil ? 0 : 1)
             Spacer()
             VStack(alignment: .trailing, spacing: 10) {
                 switch h.phase {
                 case .preSnap:
-                    if h.chosenCard != nil && !h.showDriveRecap {
+                    if h.chosenCard != nil && !h.showDriveRecap && h.halftime == nil {
                         ActionButton(label: "SNAP", color: homeBlue, size: 84) { send(.snap) }
                     }
                 case .live:
@@ -566,7 +698,7 @@ struct TouchControls: View {
         .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .bottom) {
-            if h.phase == .preSnap && !h.playCards.isEmpty && !h.showDriveRecap {
+            if h.phase == .preSnap && !h.playCards.isEmpty && !h.showDriveRecap && h.halftime == nil {
                 PlayCardsView(session: session).padding(.bottom, 40)
             }
         }

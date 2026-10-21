@@ -126,6 +126,7 @@ public struct Match: Sendable {
     public static let quarterSeconds: Float = 180
     /// The final-score screen ignores buttons this long so the last play's button mash doesn't start a rematch.
     public static let gameOverMinTicks = 90
+    public static let halftimeMinTicks = 90
 
     public private(set) var world: World
     public let playbook: Playbook
@@ -160,10 +161,15 @@ public struct Match: Sendable {
     public private(set) var awayGame = TeamGameStats()
     /// The final gun has sounded: the sim holds on the final-score screen until a button starts a rematch.
     public private(set) var isGameOver = false
+    /// Halftime screen is active between Q2 and Q3 until dismissed by the user.
+    public private(set) var isHalftime = false
     public static let choicesPerDown = 3
     public typealias RosterEntry = (ratings: Ratings, number: Int)
 
+    private var halftimeDue = false
+    private var halftimeTicks = 0
     private var opponentDriveTicks = 0
+
     /// Rosters for the simulated opposing possession: their offense against the user's defense.
     private var opponentOffenseRoster: [Position: RosterEntry] = [:]
     private var homeDefenseRoster: [Position: RosterEntry] = [:]
@@ -280,10 +286,16 @@ public struct Match: Sendable {
             stepGameOver(input)
             return
         }
+        if isHalftime {
+            halftimeTicks += 1
+            let pressed = !input.buttons.isEmpty || input.playSelect >= 0
+            if pressed && halftimeTicks >= Match.halftimeMinTicks { dismissHalftime() }
+            return
+        }
         if isShowingDriveRecap {
             opponentDriveTicks -= 1
             if opponentDriveTicks <= 0 { dismissDriveRecap() }
-            if isGameOver { return }
+            if isGameOver || isHalftime { return }
         }
         switch phase {
         case .preSnap: stepPreSnap(input)
@@ -292,7 +304,13 @@ public struct Match: Sendable {
             world.step(intents: [:])
             guard phaseTicks >= Match.deadBallTicks else { break }
             // A drive recap (e.g. the opponent ran out the clock) still gets shown before the final screen.
-            if isFinalGun && opponentDrive == nil { endGame() } else { resetFormation() }
+            if isFinalGun && opponentDrive == nil {
+                endGame()
+            } else if halftimeDue && opponentDrive == nil {
+                startHalftime()
+            } else {
+                resetFormation()
+            }
         }
     }
 
@@ -300,6 +318,24 @@ public struct Match: Sendable {
         world.step(intents: [:])
         let pressed = !input.buttons.isEmpty || input.playSelect >= 0
         if pressed && phaseTicks >= Match.gameOverMinTicks { startNewGame() }
+    }
+
+    private mutating func startHalftime() {
+        isHalftime = true
+        halftimeDue = false
+        halftimeTicks = 0
+        message = "HALFTIME"
+    }
+
+    private mutating func dismissHalftime() {
+        isHalftime = false
+        halftimeTicks = 0
+        // Second half starts with a fresh kickoff; no down, ball position or held input crosses halftime.
+        restartDrive()
+        nextLOS = Match.kickoffYardLine
+        nextFirstDown = min(nextLOS + 10, Field.goalLine)
+        message = "SELECT PLAY"
+        resetFormation()
     }
 
     private mutating func endGame() {
@@ -316,6 +352,9 @@ public struct Match: Sendable {
     /// Rematch: same teams, fresh score, clock and box scores; the user receives the opening kickoff.
     public mutating func startNewGame() {
         isGameOver = false
+        isHalftime = false
+        halftimeDue = false
+        halftimeTicks = 0
         homeScore = 0
         awayScore = 0
         quarter = 1
@@ -375,7 +414,11 @@ public struct Match: Sendable {
         opponentDriveTicks = 0
         phaseTicks = 0
         message = "SELECT PLAY"
-        if isFinalGun { endGame() }
+        if isFinalGun {
+            endGame()
+        } else if halftimeDue {
+            startHalftime()
+        }
     }
 
     private mutating func choose(_ i: Int) {
@@ -608,7 +651,13 @@ public struct Match: Sendable {
             advanceDown(to: clamp(spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1))
         }
         if clock <= 0 {
-            if quarter < 4 { quarter += 1; clock = Match.quarterSeconds } else { message += "  —  FINAL" }
+            if quarter < 4 {
+                if quarter == 2 { halftimeDue = true }
+                quarter += 1
+                clock = Match.quarterSeconds
+            } else {
+                message += "  —  FINAL"
+            }
         }
     }
 
@@ -693,6 +742,7 @@ public struct Match: Sendable {
         awayGame.stats.add(result.drive.stats)
         awayGame.seconds += result.drive.seconds
         if result.drive.ending == .interception || result.drive.ending == .downs { awayGame.turnovers += 1 }
+        if quarter < 3 && result.quarter >= 3 { halftimeDue = true }
         quarter = result.quarter
         clock = result.clock
         nextLOS = result.userLineOfScrimmage
