@@ -1,5 +1,13 @@
 # Daily maintenance state
 
+## 2026-10-22 run (selection checkpoint)
+
+- Timestamp: `2026-10-22T06:37:55Z`; base `283116d9948fe20ba3faa3432980ebf461a24ae8`. GitHub preflight passed. Main CI [39616582823](https://github.com/rwrife/craft-bowl/actions/runs/39616582823) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 remain runtime-evidence-gated; #25 still lacks universal dense-layout non-overlap proof. No closure.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25): bounded collision improvement. Dedicated branch `fix/issue-25-speed-turn-rate` at `.worktrees/issue-25-speed-turn-rate` created from `origin/main` (renamed after selecting scope); existing worktrees retained.
+- TDD: 18-player sideline stress failed at tick 1 with overlap `0.03294301` (> `0.005`) on 24 sweeps. Raised bounded collision relaxation to 72 sweeps. Docker `swift:6.0-noble` platform-neutral mirror passed full 63/63 tests before last test-only assertions and focused 3/3 afterward; Docker strict `swift-format` passed on both changed Swift files; RNG lint passed (22 files); staged diff check passed. Independent read-only Codex review PASS, zero blockers on tree `e7428eed33054373f04b3ea8d0bfb5c5c4870dad` (patch SHA-256 `e3327b75111eef1fdbf43f4509545716fffb1210108d202a7c0b2886428ba6c7`).
+- Pushed `4854a326caea5a621dbee4c9d99bf93c2a90b2e9`; opened and squash-merged [PR #101](https://github.com/rwrife/craft-bowl/pull/101) with `Advances #25` at `2026-10-22T09:11:19Z`, merge commit `ddf97f9956909888683b0f1dd477884358801ea3`. Hosted [CI 39745358301](https://github.com/rwrife/craft-bowl/actions/runs/39745358301) first attempt cancelled at simulator test; rerun passed exact-head macOS package tests, shader compilation, changed-file Swift lint, seeded RNG lint, simulator app-scheme tests, and simulator app build. #25 verified OPEN; no universal non-overlap proof or device frame-cost measurement. Linux lacks local Xcode/Metal/simulator/device evidence; no physical-device check, signing, or publication. No PR blocked at initial snapshot. Tracked state sync through a narrow docs PR.
+
 ## 2026-10-21 run (selection checkpoint)
 
 - Timestamp: `2026-10-21T06:49:45Z`; base `328542778bd3288fba6a3121af77e5ad02ce9716`. GitHub access passed; main [CI 39405621751](https://github.com/rwrife/craft-bowl/actions/runs/39405621751) SUCCESS.
