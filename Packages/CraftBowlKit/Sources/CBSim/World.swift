@@ -275,7 +275,7 @@ public struct World: Sendable {
 
         // Track contacts per-pair to avoid duplicate events and multiple engagement updates.
         var contactsReported: Set<UInt64> = []
-        let maxIterations = 24
+        let maxIterations = 72
         for _ in 0..<maxIterations {
             var maxOverlap: Float = 0
             for a in 0..<n where !players[a].isDown {
