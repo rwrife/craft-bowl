@@ -25,10 +25,14 @@ public struct Stamina: Sendable, Equatable {
     ///   - carrying: whether this player has the ball (extra drain on top of exerting).
     ///   - cutting: whether the player is turning hard this tick.
     ///   - wantsTurbo: turbo button held.
-    public mutating func step(dt: Float, ratings: Ratings, curves: RatingCurves, exerting: Bool,
-                              carrying: Bool, cutting: Bool, wantsTurbo: Bool) {
+    public mutating func step(
+        dt: Float, ratings: Ratings, curves: RatingCurves, exerting: Bool,
+        carrying: Bool, cutting: Bool, wantsTurbo: Bool
+    ) {
         isTurboActive = wantsTurbo && turbo > 0
-        stepHealth(dt: dt, ratings: ratings, curves: curves, exerting: exerting, carrying: carrying, cutting: cutting)
+        stepHealth(
+            dt: dt, ratings: ratings, curves: curves, exerting: exerting || isTurboActive,
+            carrying: carrying, cutting: cutting)
         if isTurboActive {
             turbo = max(0, turbo - dt)
             rechargeCooldown = curves.turboRechargeDelay
@@ -40,8 +44,10 @@ public struct Stamina: Sendable, Equatable {
     }
 
     /// Health only (used while down or diving, when turbo can't be used).
-    public mutating func stepHealth(dt: Float, ratings: Ratings, curves: RatingCurves, exerting: Bool,
-                                    carrying: Bool = false, cutting: Bool = false) {
+    public mutating func stepHealth(
+        dt: Float, ratings: Ratings, curves: RatingCurves, exerting: Bool,
+        carrying: Bool = false, cutting: Bool = false
+    ) {
         if exerting {
             var drain = curves.playDrain(ratings) + (carrying ? curves.carryDrain(ratings) : 0)
             if cutting { drain *= curves.cutDrainMultiplier }
