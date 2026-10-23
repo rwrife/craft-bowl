@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-23 run (selection checkpoint)
+
+- Timestamp: `2026-10-23T07:56:23Z`; base `4e5d080a9e43a31658035a6022ff956ec8fbc389`. GitHub preflight passed. Main [CI 39760500436](https://github.com/rwrife/craft-bowl/actions/runs/39760500436) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 need runtime evidence; #25 universal collision acceptance remains unproven; #59 dedicated cheerleader visuals pending. No closure audit passed.
+- Selected [#26](https://github.com/rwrife/craft-bowl/issues/26): bounded defender turbo energy accounting. #25 collision work provides functional base but issue remains open. Dedicated branch `fix/issue-26-defender-turbo-energy` at `.worktrees/issue-26-defender-turbo-energy`, clean from `origin/main`. Existing unrelated worktrees retained.
+- Actions: TDD reproduced defender turbo health staying at 1.0 (focused Docker Swift 6.0 test failed 1/3). `Stamina.step` now treats active turbo as exertion even for idle-role defenders; new tests cover defender health drain, rest recovery/recharge delay, and Endurance-dependent capacity/speed boost. Docker `swift:6.0-noble` platform-neutral mirror passed 67/67 tests before final formatting; focused 3/3 passed after final test edit. Complete snapshot gates/review, push, PR, and CI still pending at checkpoint. Blockers: Linux host lacks native Xcode/Metal/iOS simulator; Apple build awaits CI. Issue #26 runtime visual pursuit-angle acceptance stays open.
+
 ## 2026-10-22 run (selection checkpoint)
 
 - Timestamp: `2026-10-22T06:37:55Z`; base `283116d9948fe20ba3faa3432980ebf461a24ae8`. GitHub preflight passed. Main CI [39616582823](https://github.com/rwrife/craft-bowl/actions/runs/39616582823) SUCCESS.
