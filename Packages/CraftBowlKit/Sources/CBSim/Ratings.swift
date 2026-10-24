@@ -115,6 +115,23 @@ public struct RatingCurves: Codable, Sendable {
     /// Receiver hands edge at Ability 1/99. Legacy tuning preserves raw Ability.
     public var receiverHandsMin: Float? = nil
     public var receiverHandsMax: Float? = nil
+    /// Issue #27 catch-rate tuning (all optional; legacy tuning JSON loads unchanged).
+    /// Catch chance before hands/distance/contest: base + 0.38 * hands Ability.
+    public var catchBaseChance: Float? = nil
+    /// Chance lost while a defender is inside the contest radius.
+    public var contestedCatchPenalty: Float? = nil
+    /// Chance lost per yard between receiver and ball.
+    public var catchDistancePenaltyPerYard: Float? = nil
+
+    /// Validated tuning value in 0...1, falling back to the shipped default.
+    private func unitTuned(_ value: Float?, _ fallback: Float) -> Float {
+        guard let value, value.isFinite, value >= 0, value <= 1 else { return fallback }
+        return value
+    }
+
+    public func catchBase() -> Float { unitTuned(catchBaseChance, 0.70) }
+    public func contestedPenalty() -> Float { unitTuned(contestedCatchPenalty, 0.42) }
+    public func catchDistancePenalty() -> Float { unitTuned(catchDistancePenaltyPerYard, 0.08) }
 
     public func receiverHands(_ r: Ratings) -> Float {
         let low = receiverHandsMin ?? 0

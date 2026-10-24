@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-24 run (selection checkpoint)
+
+- Timestamp: `2026-10-24T06:51:00Z`; base `f6caa904dc93aba639a1cedbda039b97ad5eb029`. GitHub preflight passed. Main CI [39935814335](https://github.com/rwrife/craft-bowl/actions/runs/39935814335) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 require interactive runtime evidence; #25 universal collision guarantee unproven; #26 visual pursuit/turbo acceptance unproven. No closure audit passed.
+- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27): bounded open/contested headless catch-rate acceptance, grounded in existing pass/catch code. #25 is still open for a broader collision guarantee but functional collision/pathing base has landed; #27 catch-rate slice does not depend on universal separation. Branch `fix/issue-27-catch-rates` at `.worktrees/issue-27-catch-rates`, created clean from `origin/main`. Other worktrees retained.
+- Actions: dedicated worktree created. RED test baseline: 85.8% open, 70.3% contested (600 seeded trials). Tuned catch base/contest/distance in live resolver, added 8 acceptance/tuning tests; GREEN Docker Swift 6.0: 75/75; strict swift-format on touched files PASS; RNG lint PASS; staged diff check PASS. Initial independent review flagged Swift import order; fixed and verified. Fresh final-tree review/PR CI pending. Linux cannot run local Xcode/Metal/iOS Simulator; hosted CI will validate app build.
+
 ## 2026-10-23 run (selection checkpoint)
 
 - Timestamp: `2026-10-23T07:56:23Z`; base `4e5d080a9e43a31658035a6022ff956ec8fbc389`. GitHub preflight passed. Main [CI 39760500436](https://github.com/rwrife/craft-bowl/actions/runs/39760500436) SUCCESS.
