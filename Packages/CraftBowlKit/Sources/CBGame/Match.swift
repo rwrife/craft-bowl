@@ -541,7 +541,11 @@ public struct Match: Sendable {
         }
     }
 
-    private mutating func resolveCatch(at spot: Vec2, target: EntityID?) {
+    /// Test hook: place players / ball state for headless rule probes (issue #27 catch-rate fixtures).
+    mutating func mutateWorld(_ body: (inout World) -> Void) { body(&world) }
+
+    /// Internal (not private) so headless acceptance tests can resolve a catch at a controlled spot.
+    mutating func resolveCatch(at spot: Vec2, target: EntityID?) {
         let defender = world.players
             .filter { $0.side == .defense && !$0.isDown }
             .min { $0.location.distance(to: spot) < $1.location.distance(to: spot) }
@@ -562,7 +566,11 @@ public struct Match: Sendable {
             let reach: Float = (r.isDiving ? 0.6 : 0) + 1.2 + 0.9 * ability
             guard receiverDist < reach else { endPlay(.incomplete, at: spot); return }
             let contested = defender.map { $0.location.distance(to: spot) < 2.2 } ?? false
-            let chance = clamp(0.62 + 0.38 * ability - (contested ? 0.18 : 0) - receiverDist * 0.08, 0.25, 0.98)
+            // Base, contest and distance terms are tuning (issue #27: open ≥ 90%, contested ≈ 50%).
+            let chance = clamp(
+                world.curves.catchBase() + 0.38 * ability
+                    - (contested ? world.curves.contestedPenalty() : 0)
+                    - receiverDist * world.curves.catchDistancePenalty(), 0.25, 0.98)
             guard world.rng.unitFloat() < chance else {
                 endPlay(.incomplete, at: spot, text: "DROPPED!")
                 return
