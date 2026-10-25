@@ -1,12 +1,12 @@
 # Daily maintenance state
 
-## 2026-10-25 run (selection checkpoint)
+## 2026-10-25 run (post-merge closeout)
 
-- Timestamp: `2026-10-25T06:55:34Z`; base `bc6d5f04c6cf7e8be3a34897a2c2648a03ec5126`. GitHub preflight passed. Main [CI 40085556652](https://github.com/rwrife/craft-bowl/actions/runs/40085556652) SUCCESS.
-- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). #4/#5 need interactive runtime evidence; #25 universal separation unproven. No closure audit passed.
-- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27): bounded handoff/toss exchange behavior; issue remains open until all ball-physics tasks are satisfied. Dedicated branch `feat/issue-27-exchange` at `.worktrees/issue-27-exchange`; unrelated retained worktrees untouched.
-- Actions: TDD RED (ExchangeTests 3 failures, 7 assertions) confirmed instantaneous handoff/toss teleport. Added 2.2-yard QB–RB handoff window and low-arc, targeted toss flight with arrival-radius catch/miss. Missed backward toss counts as rush with spot loss; live loose-ball recovery remains future #27 work. Four exchange tests and 79/79 headless suite tests GREEN in Docker Swift 6.0; RNG scan GREEN. First independent review FAIL caught opponent-drive missed-toss parity; repaired via explicit outcome and simulator rush/spot handling. Fresh review/CI pending.
-- Blockers: Linux host lacks local Xcode/Metal/iOS Simulator; Apple validation belongs to hosted CI.
+- Timestamp: `2026-10-25T12:33:59Z`; base `bc6d5f04c6cf7e8be3a34897a2c2648a03ec5126`. GitHub preflight passed. Initial main [CI 40085556652](https://github.com/rwrife/craft-bowl/actions/runs/40085556652) SUCCESS.
+- Initial open PR snapshot: 0; none reviewed or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for a bounded handoff/toss exchange slice; #4/#5 need interactive runtime evidence, #25 universal separation unproven. No closure audit passed.
+- Implementation branch `feat/issue-27-exchange` in `.worktrees/issue-27-exchange` (untracked local `.verify` mirror retained). [PR #107](https://github.com/rwrife/craft-bowl/pull/107) squash-merged at `003f9e16859c816b56e1c6b64797a7a392a7988d` (`2026-10-25T12:23:42Z`). Branch cleanup pending state sync. [Issue #27](https://github.com/rwrife/craft-bowl/issues/27) verified OPEN; [slice evidence](https://github.com/rwrife/craft-bowl/issues/27#issuecomment-6397643272) posted. Open PR queue now 0.
+- TDD RED: exchange tests 3 failures (7 assertions) on instantaneous handoff/toss teleport. GREEN: 4 focused tests; Docker Swift 6.0 neutral-package mirror 79/79; touched-file strict `swift format lint`; `bash scripts/check-sim-rng.sh`; `git diff --cached --check`. First independent review FAIL identified simulated-drive missed-toss accounting; round 2 PASS on staged tree `c90e4aa29b7e3125f972d72e68e21920179fcc03`, then exact-tree gates reran green. [PR CI](https://github.com/rwrife/craft-bowl/actions/runs/40191781584) and [merged-main CI](https://github.com/rwrife/craft-bowl/actions/runs/40192908581) SUCCESS.
+- Remaining #27: rare big-hit fumbles, live loose-ball recovery, other ball-physics tuning. Linux host cannot run Xcode/Metal/iOS Simulator; Apple checks are hosted CI, not local device evidence.
 
 ## 2026-10-24 run (post-merge closeout)
 
