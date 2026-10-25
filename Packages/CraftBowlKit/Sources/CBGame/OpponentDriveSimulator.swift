@@ -217,6 +217,10 @@ struct OpponentDriveSimulator {
             case .incomplete:
                 stats.passAttempts += 1
                 log.append("\(before)  INCOMPLETE PASS")
+            case .missedToss:
+                stats.rushAttempts += 1
+                stats.rushYards += r.gain
+                log.append("\(before)  MISSED TOSS  \(signed)")
             case .safety:
                 if case .pass = r.action { stats.passAttempts += 1 } else if r.action == nil { stats.sacks += 1 }
                 log.append("\(before)  TACKLED IN END ZONE  SAFETY")
@@ -373,7 +377,9 @@ struct OpponentDriveSimulator {
         if outcome == .touchdown { gain = Int((Field.goalLine - los).rounded()) }
         if outcome == .incomplete || outcome == .interception { gain = 0 }
         if outcome == .safety { gain = Int((Field.ownGoalLine - los).rounded()) }
-        if case .pass(let receiver) = action, outcome != .incomplete && outcome != .interception {
+        if case .pass(let receiver) = action,
+            outcome != .incomplete && outcome != .missedToss && outcome != .interception
+        {
             carrierNumber = match.world[receiver].number
         }
         return PlayResult(

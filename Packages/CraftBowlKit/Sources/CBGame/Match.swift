@@ -9,7 +9,7 @@ public enum PlayPhase: String, Sendable, Equatable {
 }
 
 public enum PlayOutcome: String, Sendable, Equatable {
-    case tackled, outOfBounds, touchdown, incomplete, interception, safety, dive, sack
+    case tackled, outOfBounds, touchdown, incomplete, missedToss, interception, safety, dive, sack
 }
 
 /// Box score for a simulated opposing-team possession, shown to the user once the drive is over.
@@ -178,6 +178,8 @@ public struct Match: Sendable {
     /// How the current snap is unfolding, for the user's box score.
     private var playThrown = false
     private var playCaught = false
+    /// Receiver for a short backfield pitch; pass catches use the normal hands/contest rules.
+    private var tossTarget: EntityID?
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -448,6 +450,7 @@ public struct Match: Sendable {
         runnerPhase = false
         playThrown = false
         playCaught = false
+        tossTarget = nil
         message = ""
         playNumber += 1
     }
@@ -488,12 +491,27 @@ public struct Match: Sendable {
             pass(to: .center, from: qbID)
         } else if buttons.contains(.passRight), actions.contains(.passRight) {
             pass(to: .right, from: qbID)
-        } else if buttons.contains(.handoff), actions.contains(.handoff) || actions.contains(.toss),
+        } else if buttons.contains(.handoff), actions.contains(.handoff),
             let rb = world.player(at: .rb)
         {
+            let qb = world[qbID]
+            // Direct exchange window: the running back must be close enough for a hand-to-hand mesh.
+            guard qb.location.distance(to: rb.location) <= 2.2 else { return }
             world.ball = .held(by: rb.id)
             controlled = rb.id
             runnerPhase = true
+        } else if buttons.contains(.handoff), actions.contains(.toss),
+            let rb = world.player(at: .rb)
+        {
+            // Pitch towards the running back's stride with a low arc.
+            let tossSpeed: Float = 14
+            let lead = rb.velocity * 0.25
+            let targetSpot = rb.location + lead
+            guard targetSpot.y <= world[qbID].location.y else { return }  // forward throw uses pass rules
+            world.throwBall(to: targetSpot, target: rb.id, speed: tossSpeed, peak: 0.35)
+            tossTarget = rb.id
+            playThrown = false
+            controlled = nil
         }
     }
 
@@ -529,6 +547,20 @@ public struct Match: Sendable {
     private mutating func handle(_ event: SimEvent) {
         switch event {
         case .ballArrived(let at, let target):
+            if let toss = tossTarget {
+                // A short pitch simply has to find the running back in the exchange radius; no hands roll.
+                if target == toss, world[toss].location.distance(to: at) <= 1.2, !world[toss].isDown {
+                    world.ball = .held(by: toss)
+                    controlled = toss
+                    runnerPhase = true
+                    playCaught = false
+                    tossTarget = nil
+                    message = ""
+                } else {
+                    endPlay(.missedToss, at: at)
+                }
+                return
+            }
             resolveCatch(at: at, target: target)
         case .diveLanded(let id):
             if id == world.ballCarrier {
@@ -621,6 +653,7 @@ public struct Match: Sendable {
 
     private mutating func endPlay(_ outcome: PlayOutcome, at spot: Vec2, text: String? = nil) {
         recordHomePlay(outcome, at: spot)
+        tossTarget = nil
         lastOutcome = outcome
         phase = .dead
         for i in world.players.indices { world.players[i].isExerting = false }
@@ -651,6 +684,11 @@ public struct Match: Sendable {
         case .incomplete:
             message = text ?? "INCOMPLETE"
             advanceDown(to: lineOfScrimmage)
+        case .missedToss:
+            message = "TOSS MISSED  \(yards)"
+            // ponytail: a missed backward pitch is a dead rush here;
+            // add live loose-ball recovery with fumble rules.
+            advanceDown(to: clamp(spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1))
         case .tackled, .outOfBounds, .dive, .sack:
             let base =
                 outcome == .sack
@@ -708,6 +746,9 @@ public struct Match: Sendable {
             homeGame.turnovers += 1
         case .incomplete:
             s.passAttempts += 1
+        case .missedToss:
+            s.rushAttempts += 1
+            s.rushYards += gain
         case .sack:
             s.sacks += 1
             s.sackYards += max(0, -gain)
