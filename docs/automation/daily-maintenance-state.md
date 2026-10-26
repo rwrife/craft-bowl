@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-26 run (selection checkpoint)
+
+- Timestamp: `2026-10-26T07:13:36Z`; base `65af9fcff76f843cb8b91ad7e02913a09c383b6c`. GitHub preflight passed as `rwrife`. Initial main [CI 40195110323](https://github.com/rwrife/craft-bowl/actions/runs/40195110323) SUCCESS.
+- Initial open PR snapshot: 0; no PR reviewed, merged, or blocked. Open issue snapshot: 55 (#4-#23, #25-#59). No closure audit passed: #4/#5 still require authorized runtime overlay evidence, #27 remains partial, and prior #25/#26/#59 gaps remain open.
+- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27): bounded rare big-hit fumble slice with tunable chance, turnover accounting, receiver catch stat preservation, and opponent possession. Dedicated branch `feat/issue-27-big-hit-fumbles` at `.worktrees/issue-27-big-hit-fumbles`; prior issue worktrees retained. Fumble is blown dead at the hit; live loose-ball recovery remains open.
+- TDD: new tests initially failed compilation on missing fumble contract; after implementation four focused tests passed. Canary: removing diving-hit condition made normal-tackle test fail. Review round 1 identified two blockers: fumble after catch recorded as rush, and opponent fumble not counted in away turnovers; added tests and fixes. Docker Swift 6.0 neutral-package mirror 85/85 passed; Docker changed-file `swift-format lint --strict` passed; `bash scripts/check-sim-rng.sh` passed (22 files); app-source `swiftc -frontend -parse` passed; `git diff --cached --check` passed. Apple builds/simulator remain CI-only. Fresh review round 2 pending.
+
 ## 2026-10-25 run (post-merge closeout)
 
 - Timestamp: `2026-10-25T12:33:59Z`; base `bc6d5f04c6cf7e8be3a34897a2c2648a03ec5126`. GitHub preflight passed. Initial main [CI 40085556652](https://github.com/rwrife/craft-bowl/actions/runs/40085556652) SUCCESS.

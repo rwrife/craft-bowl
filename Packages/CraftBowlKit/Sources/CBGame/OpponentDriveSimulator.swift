@@ -68,6 +68,7 @@ struct OpponentDriveSimulator {
         var seconds: Float
         var action: PlayAction?
         var carrierNumber: Int?
+        var completedPass: Bool = false
     }
 
     static let maxPlays = 40
@@ -217,6 +218,20 @@ struct OpponentDriveSimulator {
             case .incomplete:
                 stats.passAttempts += 1
                 log.append("\(before)  INCOMPLETE PASS")
+            case .fumble:
+                if r.completedPass {
+                    stats.passAttempts += 1
+                    stats.completions += 1
+                    stats.passYards += r.gain
+                } else {
+                    stats.rushAttempts += 1
+                    stats.rushYards += r.gain
+                }
+                log.append("\(before)  FUMBLE  \(signed)")
+                ending = .fumble
+                endLine = los
+                userLOS = clamp(Match.mirrored(r.spot.y).rounded(), Field.ownGoalLine + 1, Field.goalLine - 1)
+                break driveLoop
             case .missedToss:
                 stats.rushAttempts += 1
                 stats.rushYards += r.gain
@@ -305,6 +320,7 @@ struct OpponentDriveSimulator {
         var action: PlayAction?
         var ticks = 0
         var carrierNumber: Int?
+        var completedPass = false
         // QB clock: when he starts reading, and when he must get rid of it.
         let readTick: Int
         let deadline: Int
@@ -366,6 +382,7 @@ struct OpponentDriveSimulator {
                 input = runnerInput(world[c])
             }
             tick(input)
+            completedPass = completedPass || match.completedPassThisPlay
             ticks += 1
             if ticks >= Self.maxPlayTicks { match.forceWhistle() }
         }
@@ -384,7 +401,7 @@ struct OpponentDriveSimulator {
         }
         return PlayResult(
             outcome: outcome, spot: spot, gain: gain, seconds: Float(ticks) / Float(Match.ticksPerSecond),
-            action: action, carrierNumber: carrierNumber)
+            action: action, carrierNumber: carrierNumber, completedPass: completedPass)
     }
 
     private mutating func tick(_ input: TickInput) {

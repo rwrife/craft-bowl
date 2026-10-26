@@ -374,7 +374,7 @@ final class GameSession: RenderFrameSource {
             if autopilot { ti = autopilotInput(ti) }
         }
         sim.tick(ti)
-        let majorOutcomes: Set<PlayOutcome> = [.touchdown, .interception, .safety, .sack]
+        let majorOutcomes: Set<PlayOutcome> = [.touchdown, .interception, .fumble, .safety, .sack]
         if presentation == .gameplay, phaseBeforeTick == .live, sim.match.phase == .dead {
             audio.playWhistle()
             if sim.match.lastOutcome.map(majorOutcomes.contains) == true || sim.match.message.contains("FIRST DOWN")

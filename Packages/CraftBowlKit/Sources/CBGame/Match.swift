@@ -9,19 +9,20 @@ public enum PlayPhase: String, Sendable, Equatable {
 }
 
 public enum PlayOutcome: String, Sendable, Equatable {
-    case tackled, outOfBounds, touchdown, incomplete, missedToss, interception, safety, dive, sack
+    case tackled, outOfBounds, touchdown, incomplete, missedToss, interception, fumble, safety, dive, sack
 }
 
 /// Box score for a simulated opposing-team possession, shown to the user once the drive is over.
 public struct OpponentDrive: Sendable, Equatable {
     /// What handed the ball over to the opposing team.
     public enum Trigger: String, Sendable, Equatable {
-        case touchdown, interception, downs, safety
+        case touchdown, interception, fumble, downs, safety
 
         public var text: String {
             switch self {
             case .touchdown: "AFTER KICKOFF"
             case .interception: "AFTER INTERCEPTION"
+            case .fumble: "AFTER FUMBLE"
             case .downs: "AFTER TURNOVER ON DOWNS"
             case .safety: "AFTER SAFETY KICK"
             }
@@ -30,7 +31,7 @@ public struct OpponentDrive: Sendable, Equatable {
 
     /// How the possession finished.
     public enum Ending: String, Sendable, Equatable {
-        case touchdown, fieldGoal, missedFieldGoal, punt, downs, interception, safety, endOfHalf, endOfGame
+        case touchdown, fieldGoal, missedFieldGoal, punt, downs, interception, fumble, safety, endOfHalf, endOfGame
 
         public var text: String {
             switch self {
@@ -40,6 +41,7 @@ public struct OpponentDrive: Sendable, Equatable {
             case .punt: "PUNT"
             case .downs: "TURNOVER ON DOWNS"
             case .interception: "INTERCEPTED"
+            case .fumble: "FUMBLE"
             case .safety: "SAFETY"
             case .endOfHalf: "END OF HALF"
             case .endOfGame: "END OF GAME"
@@ -49,7 +51,7 @@ public struct OpponentDrive: Sendable, Equatable {
         /// The defense (the user) got the ball back without the opponent scoring.
         public var isStop: Bool {
             switch self {
-            case .punt, .downs, .interception, .missedFieldGoal, .safety: true
+            case .punt, .downs, .interception, .fumble, .missedFieldGoal, .safety: true
             default: false
             }
         }
@@ -121,6 +123,11 @@ public struct Match: Sendable {
     public static let driveRecapTicks = 60 * 30
     /// The recap ignores buttons for this long so a late button mash doesn't skip it.
     public static let driveRecapMinTicks = 30
+    /// Internal testing seam to apply a simulated drive outcome.
+    mutating func recordOpponentDriveResultForTesting(_ result: OpponentDriveSimulator.Result) {
+        applyOpponentDriveResult(result)
+    }
+
     /// Opposing kickoffs/free kicks are fielded at the receiving team's own 25.
     public static let kickoffYardLine: Float = Field.ownGoalLine + 25
     public static let quarterSeconds: Float = 180
@@ -468,7 +475,15 @@ public struct Match: Sendable {
         world.step(intents: intents)
         for event in world.events { handle(event) }
         guard phase == .live else { return }
-        checkCarrier()
+        resolveCarrierContact()
+    }
+
+    var completedPassThisPlay: Bool { playCaught }
+
+    /// Internal testing seam to exercise receiver contact after a catch.
+    mutating func markPlayCaughtForTesting() {
+        playCaught = true
+        runnerPhase = true
     }
 
     /// Key players and the ball carrier (once they're running with it) drain health; everyone else recovers.
@@ -617,7 +632,8 @@ public struct Match: Sendable {
         endPlay(.incomplete, at: spot)
     }
 
-    private mutating func checkCarrier() {
+    /// Internal test seam; the live tick calls the same contact resolver.
+    mutating func resolveCarrierContact() {
         guard let cid = world.ballCarrier else { return }
         let c = world[cid]
         if c.location.y >= Field.goalLine { endPlay(.touchdown, at: c.location); return }
@@ -638,6 +654,10 @@ public struct Match: Sendable {
                 0.72 + 0.35 * edge - 0.25 * c.ratings.s * c.health
                     + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
             if world.rng.unitFloat() < chance {
+                if d.isDiving && edge >= 0.35 && world.rng.unitFloat() < world.curves.fumbleChance() {
+                    endPlay(.fumble, at: c.location)
+                    return
+                }
                 let sack = c.position == .qb && c.location.y < lineOfScrimmage
                 endPlay(sack ? .sack : .tackled, at: c.location)
                 return
@@ -681,6 +701,11 @@ public struct Match: Sendable {
             simulateOpponentDrive(
                 after: .interception,
                 from: theirSpot <= Field.ownGoalLine ? Field.ownGoalLine + 20 : clamp(theirSpot.rounded(), 11, 109))
+        case .fumble:
+            message = "FUMBLE!"
+            restartDrive()
+            // ponytail: blown dead at the hit; live loose-ball recovery needs a follow-up slice.
+            simulateOpponentDrive(after: .fumble, from: clamp(Match.mirrored(spot.y).rounded(), 11, 109))
         case .incomplete:
             message = text ?? "INCOMPLETE"
             advanceDown(to: lineOfScrimmage)
@@ -749,6 +774,16 @@ public struct Match: Sendable {
         case .missedToss:
             s.rushAttempts += 1
             s.rushYards += gain
+        case .fumble:
+            if playCaught {
+                s.passAttempts += 1
+                s.completions += 1
+                s.passYards += gain
+            } else {
+                s.rushAttempts += 1
+                s.rushYards += gain
+            }
+            homeGame.turnovers += 1
         case .sack:
             s.sacks += 1
             s.sackYards += max(0, -gain)
@@ -786,11 +821,17 @@ public struct Match: Sendable {
         let result = sim.run(
             team: opponentName, trigger: trigger, startLine: start, quarter: quarter, clock: clock,
             scoreDelta: awayScore - homeScore)
+        applyOpponentDriveResult(result)
+    }
+
+    private mutating func applyOpponentDriveResult(_ result: OpponentDriveSimulator.Result) {
         awayScore += result.opponentPoints
         homeScore += result.userPoints
         awayGame.stats.add(result.drive.stats)
         awayGame.seconds += result.drive.seconds
-        if result.drive.ending == .interception || result.drive.ending == .downs { awayGame.turnovers += 1 }
+        if result.drive.ending == .interception || result.drive.ending == .fumble || result.drive.ending == .downs {
+            awayGame.turnovers += 1
+        }
         if quarter < 3 && result.quarter >= 3 { halftimeDue = true }
         quarter = result.quarter
         clock = result.clock
