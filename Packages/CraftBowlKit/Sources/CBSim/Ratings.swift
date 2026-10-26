@@ -122,6 +122,8 @@ public struct RatingCurves: Codable, Sendable {
     public var contestedCatchPenalty: Float? = nil
     /// Chance lost per yard between receiver and ball.
     public var catchDistancePenaltyPerYard: Float? = nil
+    /// Chance of losing the ball on a successful diving tackle with a large Power advantage.
+    public var bigHitFumbleChance: Float? = nil
 
     /// Validated tuning value in 0...1, falling back to the shipped default.
     private func unitTuned(_ value: Float?, _ fallback: Float) -> Float {
@@ -132,6 +134,7 @@ public struct RatingCurves: Codable, Sendable {
     public func catchBase() -> Float { unitTuned(catchBaseChance, 0.70) }
     public func contestedPenalty() -> Float { unitTuned(contestedCatchPenalty, 0.42) }
     public func catchDistancePenalty() -> Float { unitTuned(catchDistancePenaltyPerYard, 0.08) }
+    public func fumbleChance() -> Float { unitTuned(bigHitFumbleChance, 0.02) }
 
     public func receiverHands(_ r: Ratings) -> Float {
         let low = receiverHandsMin ?? 0
