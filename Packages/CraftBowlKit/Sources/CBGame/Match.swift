@@ -187,6 +187,7 @@ public struct Match: Sendable {
     private var playCaught = false
     /// Receiver for a short backfield pitch; pass catches use the normal hands/contest rules.
     private var tossTarget: EntityID?
+    private var looseFumbleTicks = 0
 
     private var nextLOS: Float = 35
     private var nextDown = 1
@@ -458,6 +459,7 @@ public struct Match: Sendable {
         playThrown = false
         playCaught = false
         tossTarget = nil
+        looseFumbleTicks = 0
         message = ""
         playNumber += 1
     }
@@ -467,7 +469,12 @@ public struct Match: Sendable {
         clock -= used
         homeGame.seconds += used
         var intents = ai
-        if let c = controlled {
+        if looseFumbleTicks > 0 {
+            let spot = world.ballLocation
+            for player in world.players where !player.isDown {
+                intents[player.id] = PlayerIntent(move: (spot - player.location).normalized)
+            }
+        } else if let c = controlled {
             intents[c] = PlayerIntent(move: input.move, turbo: input.turbo, dive: input.buttons.contains(.dive))
         }
         handleQBButtons(input.buttons)
@@ -475,7 +482,11 @@ public struct Match: Sendable {
         world.step(intents: intents)
         for event in world.events { handle(event) }
         guard phase == .live else { return }
-        resolveCarrierContact()
+        if looseFumbleTicks > 0 {
+            resolveLooseFumble()
+        } else {
+            resolveCarrierContact()
+        }
     }
 
     var completedPassThisPlay: Bool { playCaught }
@@ -655,10 +666,16 @@ public struct Match: Sendable {
                     + (d.isDiving ? 0.1 : 0), 0.35, 0.95)
             if world.rng.unitFloat() < chance {
                 if d.isDiving && edge >= 0.35 && world.rng.unitFloat() < world.curves.fumbleChance() {
-                    endPlay(.fumble, at: c.location)
+                    // The hit dislodges the ball. Both teams get a brief live recovery window.
+                    world.ball = .loose(at: c.location)
+                    world[cid].isDown = true
+                    world[cid].recoverTicks = 45
+                    looseFumbleTicks = 90
+                    controlled = nil
+                    message = "FUMBLE!"
                     return
                 }
-                let sack = c.position == .qb && c.location.y < lineOfScrimmage
+                let sack = c.position == .qb && c.location.y < lineOfScrimmage && !playCaught && !runnerPhase
                 endPlay(sack ? .sack : .tackled, at: c.location)
                 return
             }
@@ -669,11 +686,37 @@ public struct Match: Sendable {
         }
     }
 
+    /// A stationary loose ball is claimed by the nearest upright player in reach; ties use roster order.
+    /// ponytail: no bouncing ball trajectory; add one with a tuned ground-physics model.
+    private mutating func resolveLooseFumble() {
+        guard case .loose(at: let spot) = world.ball else { return }
+        if let recoverer = world.players.filter({ !$0.isDown && $0.location.distance(to: spot) <= 1.2 })
+            .min(by: {
+                let a = $0.location.distance(to: spot), b = $1.location.distance(to: spot)
+                return a == b ? $0.id.raw < $1.id.raw : a < b
+            })
+        {
+            if recoverer.side == .offense {
+                world.ball = .held(by: recoverer.id)
+                controlled = recoverer.id
+                runnerPhase = true
+                message = "RECOVERED!"
+            } else {
+                endPlay(.fumble, at: spot)
+            }
+            looseFumbleTicks = 0
+            return
+        }
+        looseFumbleTicks -= 1
+        if looseFumbleTicks == 0 { endPlay(.fumble, at: spot) }
+    }
+
     // MARK: Whistle
 
     private mutating func endPlay(_ outcome: PlayOutcome, at spot: Vec2, text: String? = nil) {
         recordHomePlay(outcome, at: spot)
         tossTarget = nil
+        looseFumbleTicks = 0
         lastOutcome = outcome
         phase = .dead
         for i in world.players.indices { world.players[i].isExerting = false }
@@ -704,7 +747,7 @@ public struct Match: Sendable {
         case .fumble:
             message = "FUMBLE!"
             restartDrive()
-            // ponytail: blown dead at the hit; live loose-ball recovery needs a follow-up slice.
+            // Defense recovered the loose ball, or the recovery window expired.
             simulateOpponentDrive(after: .fumble, from: clamp(Match.mirrored(spot.y).rounded(), 11, 109))
         case .incomplete:
             message = text ?? "INCOMPLETE"
@@ -857,8 +900,12 @@ public struct Match: Sendable {
     /// Ends a stalled play where the ball is (safety net for the headless driver).
     mutating func forceWhistle() {
         guard phase == .live else { return }
-        let spot = world.ballCarrier.map { world[$0].location } ?? Vec2(0, lineOfScrimmage)
-        endPlay(.tackled, at: spot)
+        if looseFumbleTicks > 0 {
+            endPlay(.fumble, at: world.ballLocation)
+        } else {
+            let spot = world.ballCarrier.map { world[$0].location } ?? Vec2(0, lineOfScrimmage)
+            endPlay(.tackled, at: spot)
+        }
     }
 
     /// Jumps the game clock (tests drive late-game situations without playing a whole game).
