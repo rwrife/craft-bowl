@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-28 run (selection checkpoint)
+
+- Timestamp: `2026-10-28T06:24:21Z`; base `6b9147062ee5cd22be4ee6ce563eb6fd9a59e579`. GitHub access passed; main CI [40463626664](https://github.com/rwrife/craft-bowl/actions/runs/40463626664) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #4/#5 require runtime overlay evidence; #25 universal non-overlap remains unproven; #27 missed toss still whistles dead on arrival despite live backward-pitch recovery objective. No closure.
+- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for bounded missed backward-toss loose-ball recovery. Dedicated branch `feat/issue-27-missed-toss` at `.worktrees/issue-27-missed-toss` from current `origin/main`; other issue worktrees untouched. Issue remains open until complete acceptance audit.
+- TDD RED: missed backward toss whistle produced five assertion failures in focused Docker Swift test. GREEN: missed toss stays live; offense/defense recover at landing spot or 90-tick expiry turns ball over. Updated old dead-pitch expectation. Docker Swift 6.0 neutral-package mirror: 91/91 tests PASS on code before cosmetic comment edit; mirror includes isolated compile-only correction of unrelated existing `try RatingCurves.loadBundled()` warning. Strict swift-format lint and seeded-RNG lint PASS. Read-only Codex sandbox failed (bwrap loopback); full staged tree `90d90d6c142b68eb3929fa02cbdcec53b26017d3` reviewed by unsandboxed read-only Codex: PASS, zero blockers; cosmetic outdated comment corrected afterward. Xcode/simulator remains CI-only. Final snapshot gates, PR and CI pending.
+
 ## 2026-10-27 run (selection checkpoint)
 
 - Timestamp: `2026-10-27T06:25:16Z`; base `9a15615bc08a385e1872109b5181866538520358`. GitHub access passed. Main [CI 40339264813](https://github.com/rwrife/craft-bowl/actions/runs/40339264813) SUCCESS.

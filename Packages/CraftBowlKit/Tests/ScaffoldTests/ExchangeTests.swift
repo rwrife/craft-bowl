@@ -51,24 +51,66 @@ final class ExchangeTests: XCTestCase {
         XCTAssertEqual(match.controlled, rb)
     }
 
-    func testTossMissingRunnerDoesNotTeleportBall() throws {
+    func testUnrecoveredBackwardTossExpiresAsTurnoverAtLandingSpot() throws {
         var match = try start(.toss)
         let qb = try XCTUnwrap(match.world.player(at: .qb)?.id)
         let rb = try XCTUnwrap(match.world.player(at: .rb)?.id)
         match.mutateWorld { $0[rb].location = $0[qb].location + Vec2(-3, -2) }
         match.step(input: TickInput(buttons: .handoff), ai: [:])
-        match.mutateWorld { $0[rb].location = Vec2(15, 60) }
-        for _ in 0..<60 where match.phase == .live && match.world.ballCarrier == nil {
-            match.step(input: TickInput(), ai: [:])
+        let spot = try XCTUnwrap(match.world.ballFlight?.to)
+        match.mutateWorld { world in
+            for i in world.players.indices { world.players[i].location = Vec2(15, 80) }
         }
-        XCTAssertNotEqual(match.world.ballCarrier, rb)
-        XCTAssertEqual(match.lastOutcome, .missedToss)
+        for _ in 0..<150 where match.phase == .live { match.step(input: .none, ai: [:]) }
+        XCTAssertEqual(match.lastOutcome, .fumble)
+        XCTAssertEqual(match.world.ballLocation, spot)
         XCTAssertEqual(match.homeGame.stats.rushAttempts, 1)
         XCTAssertEqual(match.homeGame.stats.passAttempts, 0)
-        let spot = match.world.ballLocation.y.rounded()
-        XCTAssertLessThan(spot, 35)
-        for _ in 0...Match.deadBallTicks { match.step(input: .none, ai: [:]) }
-        XCTAssertEqual(match.lineOfScrimmage, spot)
+        XCTAssertEqual(match.homeGame.turnovers, 1)
+        XCTAssertEqual(match.opponentDrive?.trigger, .fumble)
+    }
+
+    func testDefenseCanRecoverBackwardToss() throws {
+        var match = try start(.toss)
+        let qb = try XCTUnwrap(match.world.player(at: .qb)?.id)
+        let rb = try XCTUnwrap(match.world.player(at: .rb)?.id)
+        let defender = try XCTUnwrap(match.world.player(at: .mlb)?.id)
+        match.mutateWorld { $0[rb].location = $0[qb].location + Vec2(-3, -2) }
+        match.step(input: TickInput(buttons: .handoff), ai: [:])
+        let spot = try XCTUnwrap(match.world.ballFlight?.to)
+        match.mutateWorld { world in
+            for i in world.players.indices { world.players[i].location = Vec2(15, 80) }
+            world[defender].location = spot + Vec2(0, -0.9)
+        }
+        for _ in 0..<60 where match.phase == .live { match.step(input: .none, ai: [:]) }
+        XCTAssertEqual(match.lastOutcome, .fumble)
+        XCTAssertEqual(match.world.ballLocation, spot)
+        XCTAssertEqual(match.homeGame.turnovers, 1)
+        XCTAssertEqual(match.opponentDrive?.trigger, .fumble)
+    }
+
+    func testMissedBackwardTossCanBeRecoveredByOffense() throws {
+        var match = try start(.toss)
+        let qb = try XCTUnwrap(match.world.player(at: .qb)?.id)
+        let rb = try XCTUnwrap(match.world.player(at: .rb)?.id)
+        match.mutateWorld { $0[rb].location = $0[qb].location + Vec2(-3, -2) }
+        match.step(input: TickInput(buttons: .handoff), ai: [:])
+        let landing = try XCTUnwrap(match.world.ballFlight?.to)
+        match.mutateWorld { world in
+            for i in world.players.indices { world.players[i].location = Vec2(15, 80) }
+            world[qb].location = landing + Vec2(0, -2)
+        }
+        for _ in 0..<60 where match.phase == .live && match.world.ballFlight != nil {
+            match.step(input: .none, ai: [:])
+        }
+        XCTAssertEqual(match.phase, .live)
+        XCTAssertEqual(match.world.ball, .loose(at: landing))
+        match.mutateWorld { $0[qb].location = landing + Vec2(0, -0.9) }
+        match.step(input: .none, ai: [:])
+        XCTAssertEqual(match.world.ballCarrier, qb)
+        XCTAssertEqual(match.controlled, qb)
+        XCTAssertTrue(match.runnerPhase)
+        XCTAssertEqual(match.homeGame.turnovers, 0)
     }
 
     func testForwardTossTargetWaitsForBackwardWindow() throws {

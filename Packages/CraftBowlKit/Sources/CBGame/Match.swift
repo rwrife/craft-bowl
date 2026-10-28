@@ -580,11 +580,15 @@ public struct Match: Sendable {
                     controlled = toss
                     runnerPhase = true
                     playCaught = false
-                    tossTarget = nil
                     message = ""
                 } else {
-                    endPlay(.missedToss, at: at)
+                    // A backward pitch stays live for either team to claim at its landing spot.
+                    // ponytail: ground ball remains stationary; add bounce when ball-ground physics ships.
+                    world.ball = .loose(at: at)
+                    looseFumbleTicks = 90
+                    message = "LOOSE BALL!"
                 }
+                tossTarget = nil
                 return
             }
             resolveCatch(at: at, target: target)
@@ -754,8 +758,7 @@ public struct Match: Sendable {
             advanceDown(to: lineOfScrimmage)
         case .missedToss:
             message = "TOSS MISSED  \(yards)"
-            // ponytail: a missed backward pitch is a dead rush here;
-            // add live loose-ball recovery with fumble rules.
+            // Legacy outcome for callers that whistle a pitch dead; live missed tosses use .fumble.
             advanceDown(to: clamp(spot.y.rounded(), Field.ownGoalLine + 1, Field.goalLine - 1))
         case .tackled, .outOfBounds, .dive, .sack:
             let base =
