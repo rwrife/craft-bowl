@@ -1,12 +1,13 @@
 # Daily maintenance state
 
-## 2026-10-29 run (selection checkpoint)
+## 2026-10-29 run (post-merge closeout)
 
-- Timestamp: `2026-10-29T06:25:27Z`; base `8bd55367f3efd3bd3ebe3c754ff39266b232db31`. GitHub read/write preflight passed; main [CI 40646076955](https://github.com/rwrife/craft-bowl/actions/runs/40646076955) SUCCESS.
-- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #4/#5 need runtime evidence, #25 universal separation unproven; #27 lacks live swat resolution. No closure.
-- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for a bounded defensive pass-swat slice. Dedicated branch `feat/issue-27-defender-swat`, worktree `.worktrees/issue-27-defender-swat` from `origin/main`. Other worktrees preserved. Issue remains open for full acceptance audit.
-- Implementation: live pass-arrival swat reuses defender dive when within 1.5 yards, even if a standing defender is closer; four focused regressions cover live flight, closer receiver, closer standing defender, and out-of-range dive.
-- Verification checkpoint: Docker Swift 6.0 platform-neutral mirror `swift test --scratch-path /tmp/cb-swat-green-build` 95/95 PASS (4 new tests), after RED closer-defender test. Linux mirror excludes Apple-only app targets. Lint/review/PR/CI outcome pending.
+- Timestamp: `2026-10-29T06:25:27Z`; base `8bd55367f3efd3bd3ebe3c754ff39266b232db31`. GitHub read/write preflight passed; initial main [CI 40646076955](https://github.com/rwrife/craft-bowl/actions/runs/40646076955) SUCCESS.
+- Open PR snapshot: 0; none reviewed or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #4/#5 need runtime evidence, #25 universal separation unproven; #27 lacked live swat resolution. No closure.
+- Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for bounded defensive pass-swat slice. Branch `feat/issue-27-defender-swat`, worktree `.worktrees/issue-27-defender-swat` from `origin/main`. Other worktrees preserved.
+- Live pass-arrival swat reuses defender dive within 1.5 yards, even if standing defender is closer; four regressions cover live flight, receiver proximity, defender ordering, and range. Docker Swift 6.0 neutral-package mirror `swift test --scratch-path /tmp/cb-swat-final-build`: 95/95 PASS; inherited Linux mirror warning in `CatchRateTuningTests.swift`. Changed-file strict `swift format lint`, `bash scripts/check-sim-rng.sh` (22 files), staged diff check PASS. Read-only independent review PASS with no blockers on tree `5ab8dc30fe1d662107977b00d744a4065680aa42`; reviewer did not execute tests.
+- [PR #115](https://github.com/rwrife/craft-bowl/pull/115) (`Advances #27`) exact-head [CI 40830263185](https://github.com/rwrife/craft-bowl/actions/runs/40830263185) SUCCESS: macOS host package tests, shader compile, changed Swift lint, RNG lint, iOS Simulator app tests and build. Squash merged `2026-10-29T06:48:16Z` as `1844f89cc91629a116496a84b3a3ab03783835a5`; PR verified MERGED. Remote topic ref deleted. [Issue #27](https://github.com/rwrife/craft-bowl/issues/27) verified OPEN with [remaining-scope evidence](https://github.com/rwrife/craft-bowl/issues/27#issuecomment-6489986541). No physical-device, signing, or publication evidence; full ball-physics acceptance and dedicated swat control/AI remain open.
+- Post-merge state synchronization: docs-only branch `docs/issue-27-swat-state-sync` from merged main; not a second issue. At closeout: 0 open PRs before state sync, 55 open issues. Merged-main [CI 40831434190](https://github.com/rwrife/craft-bowl/actions/runs/40831434190) IN_PROGRESS when state-sync began. Local issue worktree retains untracked `.verify/` scratch and was not removed; other worktrees untouched.
 
 ## 2026-10-28 run (complete)
 
