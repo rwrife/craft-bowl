@@ -608,9 +608,14 @@ public struct Match: Sendable {
 
     /// Internal (not private) so headless acceptance tests can resolve a catch at a controlled spot.
     mutating func resolveCatch(at spot: Vec2, target: EntityID?) {
-        let defender = world.players
-            .filter { $0.side == .defense && !$0.isDown }
-            .min { $0.location.distance(to: spot) < $1.location.distance(to: spot) }
+        let defenders = world.players.filter { $0.side == .defense && !$0.isDown }
+        // A diving defender can swat within reach even when a standing defender is closer.
+        // ponytail: reuse dive lunge; add dedicated swat animation/input when defensive controls ship.
+        if defenders.contains(where: { $0.isDiving && $0.location.distance(to: spot) <= 1.5 }) {
+            endPlay(.incomplete, at: spot, text: "SWATTED!")
+            return
+        }
+        let defender = defenders.min { $0.location.distance(to: spot) < $1.location.distance(to: spot) }
         let receiverDist = target.map { world[$0].location.distance(to: spot) } ?? .infinity
         if let d = defender, d.location.distance(to: spot) < 1.2, d.location.distance(to: spot) < receiverDist {
             if world.rng.unitFloat() < 0.12 + 0.3 * d.ability(world.curves) {
