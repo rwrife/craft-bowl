@@ -565,6 +565,10 @@ public struct Match: Sendable {
         aim.y = clamp(aim.y, Field.wallMinY + 0.5, Field.wallMaxY - 0.5)
         let dist = qb.location.distance(to: aim)
         world.throwBall(to: aim, target: r.id, speed: armSpeed, peak: 0.6 + dist * 0.07)
+        if pressured, case .inAir(var flight) = world.ball {
+            flight.wobble = 0.35
+            world.ball = .inAir(flight)
+        }
         playThrown = true
         // AI runs the receiver to the ball; the user takes over on the catch.
         controlled = nil
