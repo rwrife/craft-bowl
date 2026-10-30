@@ -7,7 +7,7 @@
 - Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for bounded pressure-induced pass wobble slice; `feat/issue-27-pass-wobble` at `.worktrees/issue-27-pass-wobble`, created from `origin/main`. Other worktrees retained. Full issue remains open pending complete acceptance audit.
 - Actions: live pass now carries deterministic lateral pressure wobble along flight, returning to original target at catch; clean passes and backward pitches remain straight. Regression test exercises live pressure input and flight endpoint.
 - Verification checkpoint: Docker `swift:6.0-noble` neutral-package mirror `swift test` 96/96 PASS; strict changed-file `swift-format lint` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files). Direct Linux full package failed at existing Apple-only `simd` import in CBRender. Native Xcode/Metal/iOS Simulator unavailable locally; hosted CI pending. Other local `.verify/` trees remain untracked and out of PR.
-- PR/merge: not yet published at this checkpoint; issue #27 stays OPEN for remaining broad acceptance. No device, signing, or publication evidence.
+- PR: [#117](https://github.com/rwrife/craft-bowl/pull/117) opened from `feat/issue-27-pass-wobble` at `c8a4633`. Independent staged-diff review PASS on tree `1c641201aa85c3aca21f40f4f9b11dc7cd444913`; CI pending. Issue #27 stays OPEN for remaining broad acceptance. No merge, device, signing, or publication evidence.
 
 ## 2026-10-29 run (post-merge closeout)
 
