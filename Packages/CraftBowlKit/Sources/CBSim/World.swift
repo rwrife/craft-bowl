@@ -57,9 +57,15 @@ public struct BallFlight: Sendable, Equatable {
     /// Apex height above the release/catch height, yards.
     public var peak: Float
     public var target: EntityID?
+    /// Lateral flight wobble in yards; zero for clean throws and backward pitches.
+    public var wobble: Float = 0
 
     public var progress: Float { duration > 0 ? min(1, elapsed / duration) : 1 }
-    public var groundPosition: Vec2 { from + (to - from) * progress }
+    public var groundPosition: Vec2 {
+        let t = progress
+        let direction = (to - from).normalized
+        return from + (to - from) * t + Vec2(-direction.y, direction.x) * (wobble * sin(2 * .pi * t) * sin(.pi * t))
+    }
     public var height: Float {
         let t = progress
         return World.carryHeight + 4 * peak * t * (1 - t)

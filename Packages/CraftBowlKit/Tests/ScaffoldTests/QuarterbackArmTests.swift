@@ -1,9 +1,10 @@
 import CBCore
-import CBGame
 import CBPlays
 import CBSim
 import Foundation
 import XCTest
+
+@testable import CBGame
 
 final class QuarterbackArmTests: XCTestCase {
     func testPowerChangesFlightSpeedThroughLivePassAction() throws {
@@ -105,6 +106,42 @@ final class QuarterbackArmTests: XCTestCase {
         XCTAssertFalse(flight.duration.isInfinite)
         let speed = flight.from.distance(to: flight.to) / flight.duration
         XCTAssertEqual(speed, 22.0, accuracy: 0.1)  // Default curve speed for 50 power QB
+    }
+
+    func testPressureWobblesLivePassWithoutChangingLandingOrToss() throws {
+        let loaded = try Playbook.loadBundled()
+        var clean = Match(seed: 42, playbook: loaded.playbook, format: loaded.format)
+        let choice = try XCTUnwrap(
+            clean.playChoices.firstIndex {
+                clean.playbook.offense[$0].qbActions.contains(.passLeft)
+            })
+        clean.step(input: TickInput(playSelect: Int8(choice)), ai: [:])
+        clean.step(input: TickInput(buttons: .snap), ai: [:])
+        let qb = try XCTUnwrap(clean.world.player(at: .qb)?.id)
+        let defender = try XCTUnwrap(clean.world.player(at: .mlb)?.id)
+        clean.mutateWorld { $0[defender].location = $0[qb].location + Vec2(10, 0) }
+        var pressured = clean
+        pressured.mutateWorld { $0[defender].location = $0[qb].location + Vec2(1.8, 0) }
+        clean.step(input: TickInput(buttons: .passLeft), ai: [:])
+        pressured.step(input: TickInput(buttons: .passLeft), ai: [:])
+        var calmFlight = try XCTUnwrap(clean.world.ballFlight)
+        var wobbleFlight = try XCTUnwrap(pressured.world.ballFlight)
+        XCTAssertEqual(calmFlight.wobble, 0)
+        XCTAssertGreaterThan(wobbleFlight.wobble, 0)
+        wobbleFlight.elapsed = 0
+        XCTAssertEqual(wobbleFlight.groundPosition, wobbleFlight.from)
+        let straight = wobbleFlight.from + (wobbleFlight.to - wobbleFlight.from) * 0.25
+        calmFlight.elapsed = calmFlight.duration * 0.25
+        wobbleFlight.elapsed = wobbleFlight.duration * 0.25
+        XCTAssertEqual(calmFlight.groundPosition, calmFlight.from + (calmFlight.to - calmFlight.from) * 0.25)
+        XCTAssertGreaterThan(wobbleFlight.groundPosition.distance(to: straight), 0.05)
+        wobbleFlight.elapsed = wobbleFlight.duration
+        XCTAssertEqual(wobbleFlight.groundPosition, wobbleFlight.to)
+        var tossWorld = World(seed: 7)
+        let carrier = tossWorld.spawn(.qb, ratings: Ratings(power: 50, speed: 50, endurance: 50), number: 1, at: .zero)
+        tossWorld.ball = .held(by: carrier)
+        tossWorld.throwBall(to: Vec2(2, -2), target: nil, speed: 14, peak: 0.35)
+        XCTAssertEqual(tossWorld.ballFlight?.wobble, 0)
     }
 
     private func flight(power: Int) throws -> BallFlight {
