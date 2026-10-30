@@ -1,13 +1,14 @@
 # Daily maintenance state
 
-## 2026-10-30 run (selection checkpoint)
+## 2026-10-30 run (post-merge closeout)
 
-- Timestamp: `2026-10-30T06:26:19Z`; base `27e88415263300e2dbd95068b00591e0cd5e900a`. GitHub preflight passed. Main [CI 40832235466](https://github.com/rwrife/craft-bowl/actions/runs/40832235466) SUCCESS.
+- Timestamp: `2026-10-30T06:26:19Z` start; `2026-10-30T06:44:55Z` merge. Base `27e88415263300e2dbd95068b00591e0cd5e900a`. GitHub preflight passed. Initial main [CI 40832235466](https://github.com/rwrife/craft-bowl/actions/runs/40832235466) SUCCESS.
 - Open PR snapshot: 0; no PRs reviewed or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #4/#5 require interactive runtime evidence, #25 universal collision guarantee unproven, #27 pressure wobble lacks live flight behavior. No issue closed.
 - Selected [#27](https://github.com/rwrife/craft-bowl/issues/27) for bounded pressure-induced pass wobble slice; `feat/issue-27-pass-wobble` at `.worktrees/issue-27-pass-wobble`, created from `origin/main`. Other worktrees retained. Full issue remains open pending complete acceptance audit.
 - Actions: live pass now carries deterministic lateral pressure wobble along flight, returning to original target at catch; clean passes and backward pitches remain straight. Regression test exercises live pressure input and flight endpoint.
-- Verification checkpoint: Docker `swift:6.0-noble` neutral-package mirror `swift test` 96/96 PASS; strict changed-file `swift-format lint` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files). Direct Linux full package failed at existing Apple-only `simd` import in CBRender. Native Xcode/Metal/iOS Simulator unavailable locally; hosted CI pending. Other local `.verify/` trees remain untracked and out of PR.
-- PR: [#117](https://github.com/rwrife/craft-bowl/pull/117) opened from `feat/issue-27-pass-wobble` at `c8a4633`. Independent staged-diff review PASS on tree `1c641201aa85c3aca21f40f4f9b11dc7cd444913`; CI pending. Issue #27 stays OPEN for remaining broad acceptance. No merge, device, signing, or publication evidence.
+- Verification checkpoint: Docker `swift:6.0-noble` neutral-package mirror `swift test` 96/96 PASS; strict changed-file `swift-format lint` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files). Direct Linux full package failed at existing Apple-only `simd` import in CBRender. Native Xcode/Metal/iOS Simulator unavailable locally; hosted exact-head CI passed separately. Local `.verify/` mirror stayed untracked and outside PR.
+- [PR #117](https://github.com/rwrife/craft-bowl/pull/117) opened from `feat/issue-27-pass-wobble` at `acbd7f2`, exact-head [CI 41014794708](https://github.com/rwrife/craft-bowl/actions/runs/41014794708) SUCCESS: macOS package tests, Metal compile, strict lint, RNG lint, iOS Simulator app tests and build. Independent staged-diff review PASS on tree `1c641201aa85c3aca21f40f4f9b11dc7cd444913`; later commit changed only this state file. Squash-merged as `d74568092eb95d1440a6e6e3f8caa6885099dbbe` at `2026-10-30T06:44:55Z`. [Issue #27](https://github.com/rwrife/craft-bowl/issues/27) verified OPEN; [evidence comment](https://github.com/rwrife/craft-bowl/issues/27#issuecomment-6516736516) and [#58 checklist-sync comment](https://github.com/rwrife/craft-bowl/issues/58#issuecomment-6516739918) posted. No physical-device, signing, or publication evidence.
+- Final queue at closeout: 0 open PRs; 55 open issues, including #27. Post-merge main [CI 41015896454](https://github.com/rwrife/craft-bowl/actions/runs/41015896454) in progress at state-sync creation. Sync-only docs PR pending.
 
 ## 2026-10-29 run (post-merge closeout)
 
