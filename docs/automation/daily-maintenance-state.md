@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-10-31 run (selection checkpoint)
+
+- Timestamp: `2026-10-31T06:35:18Z`; GitHub preflight passed. Base `5e5911d18b04142927c10d3f671444f96c089793`; [main CI 41016892599](https://github.com/rwrife/craft-bowl/actions/runs/41016892599) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #4/#5 require interactive runtime evidence; #25 still lacks universal separation proof; #27 lacks explicit snapped state and complete ball-physics audit. No issue closed.
+- Selected [#30](https://github.com/rwrife/craft-bowl/issues/30): bounded live lane-openness measurement; existing slots and CPU target selection form foundation. Branch `feat/issue-30-lane-openness` at `.worktrees/issue-30-lane-openness` from `origin/main`; other worktrees retained. Shared yardage metric now drives CPU pass choice and live debug halos. Remaining: hash/LOS-relative corridor density, route templates, and on-device debug acceptance. Partial slice; issue stays open.
+- Verification: Docker `swift:6.0-noble` neutral-package mirror 98/98 XCTest passed, mirror touched files byte-identical; `swift-format lint --strict` touched Swift files PASS; `bash scripts/check-sim-rng.sh` PASS; Linux `swiftc -frontend -parse App/Sources/GameSession.swift` PASS. Mutation canary (include down defenders) failed focused tests as intended; restored, reran full suite green. App typecheck/Metal/iOS runtime require CI. Independent review pending.
+
 ## 2026-10-30 run (post-merge closeout)
 
 - Timestamp: `2026-10-30T06:26:19Z` start; `2026-10-30T06:44:55Z` merge. Base `27e88415263300e2dbd95068b00591e0cd5e900a`. GitHub preflight passed. Initial main [CI 40832235466](https://github.com/rwrife/craft-bowl/actions/runs/40832235466) SUCCESS.

@@ -811,6 +811,17 @@ final class GameSession: RenderFrameSource {
                     fieldToWorld(Vec2(x, los - 10), height: 0.05),
                     fieldToWorld(Vec2(x, min(120, los + 45)), height: 0.05), laneColor))
         }
+        // Receiver halos display live nearest-defender clearance (red = covered, green = open).
+        // Sample authoritative world each render frame, never a stale pre-snap estimate.
+        for lane in Lane.passingLanes {
+            guard let receiver = m.world.player(at: lane.slotPosition),
+                let openness = m.world.receiverOpenness(for: lane)
+            else { continue }
+            let green = clamp(openness / 4, 0, 1)
+            circle(
+                &lines, receiver.location, radius: World.playerRadius + 0.25, height: 0.12,
+                SIMD4(1 - green, green, 0.1, 0.85), segments: 12)
+        }
         // Collision circles + velocity
         for p in interp.players {
             let color: SIMD4<Float> = p.position.side == .offense ? SIMD4(0.3, 0.5, 1, 0.8) : SIMD4(1, 0.3, 0.3, 0.8)
