@@ -445,8 +445,7 @@ struct OpponentDriveSimulator {
             case .handoff, .toss: continue
             }
             guard let r = world.player(at: lane.slotPosition), !r.isDown else { continue }
-            let lead = r.location + r.velocity * 0.4
-            let openness = nearestDefender(to: lead, in: world)
+            let openness = world.receiverOpenness(r.id)
             let depth = clamp(r.location.y - los, -3, 25)
             let score = min(openness, 6) + depth * 0.12 + rng.unitFloat() * 0.8
             if score > bestScore {

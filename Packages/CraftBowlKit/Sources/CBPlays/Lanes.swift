@@ -43,3 +43,10 @@ public enum QBAction: String, Codable, Hashable, Sendable {
 
 // Encode `[Lane: …]` dictionaries as JSON objects keyed by raw value.
 extension Lane: CodingKeyRepresentable {}
+
+extension World {
+    /// Openness in yards for the slot player in this lane (issue #30).
+    public func receiverOpenness(for lane: Lane) -> Float? {
+        receiverOpenness(for: lane.slotPosition)
+    }
+}

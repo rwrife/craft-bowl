@@ -157,6 +157,27 @@ public struct World: Sendable {
         players.first { $0.position == position }
     }
 
+    /// Openness in yards for one receiver (issue #30): distance from the receiver's
+    /// lead spot (where the ball should be thrown) to the nearest upright defender.
+    /// Capped at 6 — beyond that, extra space changes neither the read nor the throw.
+    /// ponytail: nearest-defender separation only; corridor-density weighting is a
+    /// later lane-metric slice (issue #30 remaining scope).
+    public func receiverOpenness(_ id: EntityID) -> Float {
+        let r = self[id]
+        let lead = r.location + r.velocity * 0.4
+        var best: Float = 6
+        for d in players where d.side == .defense && !d.isDown {
+            best = min(best, d.location.distance(to: lead))
+        }
+        return best
+    }
+
+    /// Openness for the player occupying a lane slot; `nil` when the slot is empty or down.
+    public func receiverOpenness(for position: Position) -> Float? {
+        guard let p = player(at: position), !p.isDown else { return nil }
+        return receiverOpenness(p.id)
+    }
+
     // MARK: Actions
 
     /// Throws from the current carrier toward `to`; `speed` in yards/second.
