@@ -7,7 +7,7 @@
 - Selected [#30](https://github.com/rwrife/craft-bowl/issues/30): bounded corridor-threat metric slice from current nearest-defender baseline. Branch `feat/issue-30-corridor` at `.worktrees/issue-30-corridor` from `origin/main`; existing worktrees retain local verification scratch. Remaining route templates and device-visible acceptance keep issue open.
 - Actions: live `World.receiverOpenness` now considers upright defenders along receiving half of throw corridor while keeping lead-spot clearance; CPU pass selection and debug halos use same shared read. One regression tests corridor threat, QB-side exclusion, down defenders and next-tick result.
 - Verification: Docker `swift:6.0-noble` platform-neutral mirror `swift test --scratch-path /tmp/cb-test -Xswiftc -warnings-as-errors`: 99/99 PASS after mirror-only correction of inherited Linux `try RatingCurves.loadBundled()` warning. Mirrored changed source/test byte-identical to tracked versions. Docker changed-file strict `swift-format lint` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files); staged whitespace check PASS. Read-only independent review PASS on staged tree `5aed0f847a73b6ab381ffcef15304b73bbc2f6c4`; reviewer could not run tests, which were run separately. Hosted macOS/Metal/iOS CI pending; no physical-device/signing/publication evidence.
-- PR: pending push; issue remains OPEN for full corridor geometry, route templates and device-visible acceptance.
+- [PR #121](https://github.com/rwrife/craft-bowl/pull/121) opened from `feat/issue-30-corridor` (`9b91203`); CI pending. Issue remains OPEN for full corridor geometry, route templates and device-visible acceptance.
 
 ## 2026-10-31 run (selection checkpoint)
 
