@@ -157,17 +157,27 @@ public struct World: Sendable {
         players.first { $0.position == position }
     }
 
-    /// Openness in yards for one receiver (issue #30): distance from the receiver's
-    /// lead spot (where the ball should be thrown) to the nearest upright defender.
-    /// Capped at 6 — beyond that, extra space changes neither the read nor the throw.
-    /// ponytail: nearest-defender separation only; corridor-density weighting is a
-    /// later lane-metric slice (issue #30 remaining scope).
+    /// Clearance at the lead spot and through the final half of the pass lane.
+    /// Capped at 6; the same read drives CPU target choice and debug halos.
+    /// ponytail: nearest threat only; aggregate defender density when lane tactics need it.
     public func receiverOpenness(_ id: EntityID) -> Float {
         let r = self[id]
         let lead = r.location + r.velocity * 0.4
+        let from = ballLocation
+        let route = lead - from
+        let lengthSquared = (route * route).sum()
         var best: Float = 6
         for d in players where d.side == .defense && !d.isDown {
             best = min(best, d.location.distance(to: lead))
+            // Ignore pressure near the QB: only defenders in the receiving half
+            // of the throw can close this lane. Degenerate throws use endpoint clearance.
+            if lengthSquared > 1 {
+                let projection = ((d.location - from) * route).sum() / lengthSquared
+                if projection >= 0.5 && projection <= 1 {
+                    let clearance = d.location.distance(to: from + route * projection)
+                    best = min(best, clearance * 2 + 0.5)
+                }
+            }
         }
         return best
     }

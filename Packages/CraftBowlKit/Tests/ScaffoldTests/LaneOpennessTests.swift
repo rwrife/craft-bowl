@@ -18,6 +18,25 @@ final class LaneOpennessTests: XCTestCase {
         XCTAssertNil(world.receiverOpenness(for: .laneCenter))
     }
 
+    func testCorridorThreatAffectsLiveLaneAndIgnoresQBPressureAndDownPlayers() {
+        var world = World(seed: 32)
+        let ratings = Ratings(power: 50, speed: 50, endurance: 50)
+        let qb = world.spawn(.qb, ratings: ratings, number: 1, at: Vec2(0, 40))
+        let receiver = world.spawn(.laneLeft, ratings: ratings, number: 11, at: Vec2(-10, 60))
+        world.ball = .held(by: qb)
+        let threat = world.spawn(.cbL, ratings: ratings, number: 21, at: Vec2(-7.5, 55))
+        XCTAssertEqual(world.receiverOpenness(receiver), 0.5, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(world.receiverOpenness(for: .laneLeft)), 0.5, accuracy: 0.001)
+
+        world[threat].location = Vec2(0, 42)  // Behind the receiving half.
+        XCTAssertEqual(world.receiverOpenness(receiver), 6, accuracy: 0.001)
+        world[threat].location = Vec2(-7.5, 55)
+        world[threat].isDown = true
+        XCTAssertEqual(world.receiverOpenness(receiver), 6, accuracy: 0.001)
+        world.step(intents: [:])
+        XCTAssertEqual(try XCTUnwrap(world.receiverOpenness(for: .laneLeft)), 6, accuracy: 0.01)
+    }
+
     func testOpennessUsesReceiverMovementAndNearestDefender() {
         var world = World(seed: 31)
         let ratings = Ratings(power: 50, speed: 50, endurance: 50)
