@@ -1,5 +1,13 @@
 # Daily maintenance state
 
+## 2026-11-02 run (selection checkpoint)
+
+- Timestamp: `2026-11-02T06:26:47Z`; GitHub access passed. Base `81245b409d8ef47eb4318a88679c0ae7cbd8cdbe`; [main CI 41282749049](https://github.com/rwrife/craft-bowl/actions/runs/41282749049) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #25 still lacks universal non-overlap proof, #27 full ball-state acceptance incomplete, #30 per-tick device-visible acceptance unproven; no issue closed.
+- Selected [#30](https://github.com/rwrife/craft-bowl/issues/30): bounded multi-defender receiving-corridor density slice. Branch `feat/issue-30-defender-density` at `.worktrees/issue-30-defender-density` from `origin/main`; previous worktrees retained. Route templates and visual/runtime acceptance still pending.
+- Actions: live `World.receiverOpenness` subtracts a bounded 0.5-yard penalty per extra upright defender inside the receiving half of the corridor, shared by CPU target selection and debug halos; one regression checks multi-defender penalty and down/QB-side exclusion.
+- Verification: Docker `swift:6.0-noble` neutral-package mirror `swift test --scratch-path /tmp/cb-density-test -Xswiftc -warnings-as-errors`: 100/100 PASS (changed files byte-identical in mirror; unrelated inherited Linux-only `try` correction in scratch). Docker changed-file `swift-format lint --strict` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files); staged whitespace check PASS. Read-only independent review PASS on staged source/test tree `f903f15e9549da791c61d75859ee84292290ad84`; no blockers. Linux host lacks Xcode/Metal/iOS Simulator; PR CI pending. No device, signing or publication evidence.
+
 ## 2026-11-01 run (selection checkpoint)
 
 - Timestamp: `2026-11-01T06:26:14Z`; GitHub access passed. Base `485965e50d0f0d9f82aa286dc6e75981c0dbc2ee`; [main CI 41182005168](https://github.com/rwrife/craft-bowl/actions/runs/41182005168) SUCCESS.
