@@ -37,6 +37,28 @@ final class LaneOpennessTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(world.receiverOpenness(for: .laneLeft)), 6, accuracy: 0.01)
     }
 
+    func testCrowdedReceivingCorridorTightensOpennessMetric() {
+        var world = World(seed: 33)
+        let ratings = Ratings(power: 50, speed: 50, endurance: 50)
+        let qb = world.spawn(.qb, ratings: ratings, number: 1, at: Vec2(0, 40))
+        let receiver = world.spawn(.laneCenter, ratings: ratings, number: 15, at: Vec2(0, 60))
+        world.ball = .held(by: qb)
+
+        _ = world.spawn(.mlb, ratings: ratings, number: 50, at: Vec2(1.5, 52))
+        XCTAssertEqual(world.receiverOpenness(receiver), 3.5, accuracy: 0.001)
+
+        // Second defender farther from route still crowds receiving half.
+        let second = world.spawn(.fs, ratings: ratings, number: 20, at: Vec2(-2, 56))
+        XCTAssertEqual(world.receiverOpenness(receiver), 3, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(world.receiverOpenness(for: .center)), 3, accuracy: 0.001)
+
+        world[second].isDown = true
+        XCTAssertEqual(world.receiverOpenness(receiver), 3.5, accuracy: 0.001)
+        world[second].isDown = false
+        world[second].location = Vec2(-2, 42)  // QB-side pressure is not a receiving threat.
+        XCTAssertEqual(world.receiverOpenness(receiver), 3.5, accuracy: 0.001)
+    }
+
     func testOpennessUsesReceiverMovementAndNearestDefender() {
         var world = World(seed: 31)
         let ratings = Ratings(power: 50, speed: 50, endurance: 50)

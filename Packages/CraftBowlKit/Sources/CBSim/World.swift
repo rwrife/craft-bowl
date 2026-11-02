@@ -158,8 +158,8 @@ public struct World: Sendable {
     }
 
     /// Clearance at the lead spot and through the final half of the pass lane.
+    /// Multi-defender presence along the receiving corridor tightens the window further.
     /// Capped at 6; the same read drives CPU target choice and debug halos.
-    /// ponytail: nearest threat only; aggregate defender density when lane tactics need it.
     public func receiverOpenness(_ id: EntityID) -> Float {
         let r = self[id]
         let lead = r.location + r.velocity * 0.4
@@ -167,6 +167,7 @@ public struct World: Sendable {
         let route = lead - from
         let lengthSquared = (route * route).sum()
         var best: Float = 6
+        var corridorThreats = 0
         for d in players where d.side == .defense && !d.isDown {
             best = min(best, d.location.distance(to: lead))
             // Ignore pressure near the QB: only defenders in the receiving half
@@ -176,10 +177,12 @@ public struct World: Sendable {
                 if projection >= 0.5 && projection <= 1 {
                     let clearance = d.location.distance(to: from + route * projection)
                     best = min(best, clearance * 2 + 0.5)
+                    if clearance < 2.5 { corridorThreats += 1 }
                 }
             }
         }
-        return best
+        // ponytail: fixed crowd cost; weight by defender speed when lane tactics need it.
+        return max(0, best - Float(max(0, corridorThreats - 1)) * 0.5)
     }
 
     /// Openness for the player occupying a lane slot; `nil` when the slot is empty or down.
