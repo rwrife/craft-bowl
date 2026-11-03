@@ -1,5 +1,13 @@
 # Daily maintenance state
 
+## 2026-11-03 run (selection checkpoint)
+
+- Timestamp: `2026-11-03T06:27:49Z`; GitHub access passed. Base `5e3ce6a4a02d64598e28c663d1f627ea4b7ca64b`; [main CI 41402213454](https://github.com/rwrife/craft-bowl/actions/runs/41402213454) SUCCESS.
+- Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Closure audit: #25 still lacks universal non-overlap proof; #27 full ball-state acceptance incomplete; #30 route-template/runtime acceptance incomplete. No issue closed.
+- Selected [#30](https://github.com/rwrife/craft-bowl/issues/30) for bounded throw-corridor origin correction. Branch `fix/issue-30-flight-origin` at `.worktrees/issue-30-flight-origin` from `origin/main`; prior worktrees retained. Remaining route-template and on-device visual acceptance keep issue open.
+- Actions: flight corridor now anchors to release position rather than moving ball; CPU lane selection and debug halo consume same metric. Regression proves difference after 40 flight ticks (RED before change). Partial slice; route-template and interactive visual acceptance remain.
+- Verification: Docker `swift:6.0-noble` neutral-package mirror `swift test --scratch-path /tmp/cb-test -Xswiftc -warnings-as-errors`: 101/101 PASS before final test assertion; refreshed mirror `--filter LaneOpennessTests`: 5/5 PASS after final assertion; changed source/test files byte-identical in mirror. Docker `swift format lint --strict --configuration .swift-format` on changed Swift files PASS; `bash scripts/check-sim-rng.sh` PASS (22 files); staged whitespace check PASS. Read-only independent review PASS on staged source/test/docs tree `bcdb5785243f19e0ce6958a8f043c537bd46fb34`; docs-only closeout updates after verdict. Linux host lacks Xcode/Metal/iOS Simulator; no device, signing or publication evidence. PR and hosted CI pending.
+
 ## 2026-11-02 run (selection checkpoint)
 
 - Timestamp: `2026-11-02T06:26:47Z`; GitHub access passed. Base `81245b409d8ef47eb4318a88679c0ae7cbd8cdbe`; [main CI 41282749049](https://github.com/rwrife/craft-bowl/actions/runs/41282749049) SUCCESS.
