@@ -163,7 +163,8 @@ public struct World: Sendable {
     public func receiverOpenness(_ id: EntityID) -> Float {
         let r = self[id]
         let lead = r.location + r.velocity * 0.4
-        let from = ballLocation
+        // An airborne ball advances each tick; measure the full throw lane from release.
+        let from = ballFlight?.from ?? ballLocation
         let route = lead - from
         let lengthSquared = (route * route).sum()
         var best: Float = 6
