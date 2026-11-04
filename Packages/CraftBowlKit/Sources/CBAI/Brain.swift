@@ -165,7 +165,7 @@ public struct SandboxBrain: PlayerBrain {
     /// Route shape as waypoints relative to the line of scrimmage (x = field x, y = yards past the LOS).
     /// Shared by the AI and the play-card diagrams so they always match.
     public static func routeWaypoints(lane: Lane, route: RouteKind) -> [Vec2] {
-        let x = lane == .center ? Float(4) : lane.centerX
+        let x = lane == .center ? Float(7) : lane.centerX
         switch route {
         case .deep: return [Vec2(x * 0.9, 32)]
         case .mid: return [Vec2(x, 10), Vec2(x * 0.45, 15)]
