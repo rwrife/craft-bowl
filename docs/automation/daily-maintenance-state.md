@@ -1,5 +1,9 @@
 # Daily maintenance state
 
+## 2026-11-04 run (merged; state sync)
+
+- [PR #127](https://github.com/rwrife/craft-bowl/pull/127) squash-merged at `2026-11-04T06:41:19Z` as `ae549bc6ed2e785cdb5772ab7167b9acde171335`; [issue #30](https://github.com/rwrife/craft-bowl/issues/30) remains OPEN for remaining acceptance and received [merge evidence](https://github.com/rwrife/craft-bowl/issues/30#issuecomment-6624460243). [Exact PR-head CI 41786316036](https://github.com/rwrife/craft-bowl/actions/runs/41786316036) SUCCESS: package tests, Metal shader compile, strict changed-file Swift lint, deterministic RNG lint, iOS Simulator app tests and build, results upload. Earlier run 41786268874 cancelled by newer head. [Merged-main CI 41787191802](https://github.com/rwrife/craft-bowl/actions/runs/41787191802) IN_PROGRESS at state-sync branch creation; no physical-device, signing, or publication evidence. Final PR queue after #127: 0.
+
 ## 2026-11-04 run (selection checkpoint)
 
 - Timestamp: `2026-11-04T06:28:29Z`; GitHub access passed. Base `28fce0531993caee5fe65e8b5ad811c059b396e2`. Open PR snapshot: [#126](https://github.com/rwrife/craft-bowl/pull/126), mergeable and exact-head CI [41593309384](https://github.com/rwrife/craft-bowl/actions/runs/41593309384) SUCCESS; squash-merged as `28fce0531993caee5fe65e8b5ad811c059b396e2` at `2026-11-04T06:25:01Z`, verified MERGED. Open PRs after merge: 0. Open issue snapshot: 55 (#4–#23, #25–#59). Main CI [41785375863](https://github.com/rwrife/craft-bowl/actions/runs/41785375863) in progress at selection.
