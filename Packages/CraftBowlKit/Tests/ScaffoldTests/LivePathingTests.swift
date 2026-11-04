@@ -1,11 +1,42 @@
 import CBAI
 import CBCore
+import CBGame
 import CBPlays
 import CBSim
 import XCTest
 
 /// Bounded #25 slice: verify Arrive and Avoid reach live AI intents, not only standalone tests.
 final class LivePathingTests: XCTestCase {
+    func testCenterSlotRoutesStartFromItsFormationSide() throws {
+        let loaded = try Playbook.loadBundled()
+        let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "spread_pass" })
+        let defense = try XCTUnwrap(loaded.playbook.defense.first)
+        let los: Float = 40
+        let start = Vec2(7, -1.5)  // Center slot's formation position.
+        let waypoints = SandboxBrain.routeWaypoints(lane: .center, route: .short)
+        XCTAssertEqual(waypoints.count, 1)
+        XCTAssertEqual(waypoints[0].x, start.x, accuracy: 0.001)
+        let stroke = try XCTUnwrap(
+            PlayDiagram(play: offense).strokes.first {
+                $0.style == .route && $0.points.first == start
+            })
+        XCTAssertEqual(stroke.points[1], waypoints[0])
+
+        var world = World(seed: 30)
+        let ratings = Ratings(power: 50, speed: 50, endurance: 50)
+        let qb = world.spawn(.qb, ratings: ratings, number: 12, at: Vec2(0, los - 4.5))
+        let receiver = world.spawn(
+            .laneCenter, ratings: ratings, number: 88,
+            at: Vec2(start.x, los + start.y))
+        world.ball = .held(by: qb)
+        let context = PlayContext(
+            offense: offense, defense: defense, lineOfScrimmage: los,
+            isLive: true, liveTicks: 0, controlled: qb, runnerPhase: false)
+        var brain = SandboxBrain()
+        _ = brain.intents(world: world, context: context)
+        XCTAssertEqual(brain.aimPoints[receiver], Vec2(start.x, los + waypoints[0].y))
+    }
+
     func testLiveReceiverArrivesAtRoutePoint() throws {
         let loaded = try Playbook.loadBundled()
         let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "toss_left" })
