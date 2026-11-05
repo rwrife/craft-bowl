@@ -89,12 +89,22 @@ public struct SandboxBrain: PlayerBrain {
     /// Where each AI player was heading last tick (debug draw: routes / pursuit targets).
     public private(set) var aimPoints: [EntityID: Vec2] = [:]
     private var out: [EntityID: PlayerIntent] = [:]
+    private var midRouteBreaks: Set<EntityID> = []
+    private var lastLiveTicks = 0
+    private var lastLineOfScrimmage: Float?
 
     public init() {}
 
     public mutating func intents(world: World, context: PlayContext) -> [EntityID: PlayerIntent] {
         out.removeAll(keepingCapacity: true)
         aimPoints.removeAll(keepingCapacity: true)
+        if !context.isLive || context.liveTicks == 0 || context.liveTicks < lastLiveTicks
+            || lastLineOfScrimmage != context.lineOfScrimmage
+        {
+            midRouteBreaks.removeAll(keepingCapacity: true)
+        }
+        lastLiveTicks = context.liveTicks
+        lastLineOfScrimmage = context.lineOfScrimmage
         guard context.isLive else { return out }
         let carrier = world.ballCarrier.map { world[$0] }
         let flight = world.ballFlight
@@ -154,12 +164,19 @@ public struct SandboxBrain: PlayerBrain {
         return block(p, for: carrier, world: world)
     }
 
-    private func routePoint(lane: Lane, route: RouteKind, start: PlayerState, los: Float, ticks: Int) -> Vec2 {
+    private mutating func routePoint(lane: Lane, route: RouteKind, start: PlayerState, los: Float, ticks: Int) -> Vec2 {
         let wps = SandboxBrain.routeWaypoints(lane: lane, route: route)
         guard let last = wps.last else { return start.location }
-        // Two-leg routes (mid) run the stem for 1.4 s, then break.
-        let wp = wps.count > 1 && Float(ticks) / 60 < 1.4 ? wps[0] : last
-        return Vec2(wp.x, los + wp.y)
+        if wps.count > 1 && !midRouteBreaks.contains(start.id) {
+            let stem = Vec2(wps[0].x, los + wps[0].y)
+            // Do not leave the stem merely because the timer expired while blocked.
+            if start.location.distance(to: stem) < 1 || (ticks >= 84 && start.location.distance(to: stem) < 3) {
+                midRouteBreaks.insert(start.id)
+            } else {
+                return stem
+            }
+        }
+        return Vec2(last.x, los + last.y)
     }
 
     /// Route shape as waypoints relative to the line of scrimmage (x = field x, y = yards past the LOS).

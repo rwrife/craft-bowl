@@ -37,6 +37,45 @@ final class LivePathingTests: XCTestCase {
         XCTAssertEqual(brain.aimPoints[receiver], Vec2(start.x, los + waypoints[0].y))
     }
 
+    func testMidRouteHoldsStemUntilReceiverReachesIt() throws {
+        let loaded = try Playbook.loadBundled()
+        let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "pa_shot" })
+        let defense = try XCTUnwrap(loaded.playbook.defense.first)
+        let waypoints = SandboxBrain.routeWaypoints(lane: .center, route: .mid)
+        XCTAssertEqual(waypoints.count, 2)
+        let stroke = try XCTUnwrap(
+            PlayDiagram(play: offense).strokes.first {
+                $0.style == .route && $0.points.first == Vec2(7, -1.5)
+            })
+        XCTAssertEqual(stroke.points, [Vec2(7, -1.5)] + waypoints)
+
+        var world = World(seed: 31)
+        let ratings = Ratings(power: 50, speed: 50, endurance: 50)
+        let qb = world.spawn(.qb, ratings: ratings, number: 12, at: Vec2(0, 35.5))
+        let receiver = world.spawn(.laneCenter, ratings: ratings, number: 88, at: Vec2(7, 38.5))
+        world.ball = .held(by: qb)
+        let context = PlayContext(
+            offense: offense, defense: defense, lineOfScrimmage: 40,
+            isLive: true, liveTicks: 120, controlled: qb, runnerPhase: false)
+        var brain = SandboxBrain()
+        _ = brain.intents(world: world, context: context)
+        XCTAssertEqual(brain.aimPoints[receiver], Vec2(waypoints[0].x, 40 + waypoints[0].y))
+
+        world[receiver].location = Vec2(waypoints[0].x, 40 + waypoints[0].y)
+        _ = brain.intents(world: world, context: context)
+        XCTAssertEqual(brain.aimPoints[receiver], Vec2(waypoints[1].x, 40 + waypoints[1].y))
+
+        world[receiver].location = Vec2(waypoints[0].x, 40 + waypoints[0].y - 4)
+        _ = brain.intents(world: world, context: context)
+        XCTAssertEqual(brain.aimPoints[receiver], Vec2(waypoints[1].x, 40 + waypoints[1].y))
+
+        let nextPlay = PlayContext(
+            offense: offense, defense: defense, lineOfScrimmage: 40,
+            isLive: true, liveTicks: 0, controlled: qb, runnerPhase: false)
+        _ = brain.intents(world: world, context: nextPlay)
+        XCTAssertEqual(brain.aimPoints[receiver], Vec2(waypoints[0].x, 40 + waypoints[0].y))
+    }
+
     func testLiveReceiverArrivesAtRoutePoint() throws {
         let loaded = try Playbook.loadBundled()
         let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "toss_left" })
