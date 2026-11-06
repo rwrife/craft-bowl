@@ -169,8 +169,11 @@ public struct SandboxBrain: PlayerBrain {
         guard let last = wps.last else { return start.location }
         if wps.count > 1 && !midRouteBreaks.contains(start.id) {
             let stem = Vec2(wps[0].x, los + wps[0].y)
+            let pastStemAlongLane = abs(start.location.x - stem.x) <= 2 && (start.location.y - stem.y) >= 0
             // Do not leave the stem merely because the timer expired while blocked.
-            if start.location.distance(to: stem) < 1 || (ticks >= 84 && start.location.distance(to: stem) < 3) {
+            if start.location.distance(to: stem) < 1 || pastStemAlongLane
+                || (ticks >= 84 && start.location.distance(to: stem) < 3)
+            {
                 midRouteBreaks.insert(start.id)
             } else {
                 return stem

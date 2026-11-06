@@ -69,6 +69,18 @@ final class LivePathingTests: XCTestCase {
         _ = brain.intents(world: world, context: context)
         XCTAssertEqual(brain.aimPoints[receiver], Vec2(waypoints[1].x, 40 + waypoints[1].y))
 
+        // Regression state: receiver already beyond the stem and outside its arrival radius.
+        // It must latch the break once it has reached or passed the stem depth.
+        var overshootBrain = SandboxBrain()
+        world[receiver].location = Vec2(waypoints[0].x, 40 + waypoints[0].y + 3.2)
+        _ = overshootBrain.intents(world: world, context: context)
+        XCTAssertEqual(overshootBrain.aimPoints[receiver], Vec2(waypoints[1].x, 40 + waypoints[1].y))
+
+        var offsetBrain = SandboxBrain()
+        world[receiver].location = Vec2(waypoints[0].x + 4, 40 + waypoints[0].y + 3.2)
+        _ = offsetBrain.intents(world: world, context: context)
+        XCTAssertEqual(offsetBrain.aimPoints[receiver], Vec2(waypoints[0].x, 40 + waypoints[0].y))
+
         let nextPlay = PlayContext(
             offense: offense, defense: defense, lineOfScrimmage: 40,
             isLive: true, liveTicks: 0, controlled: qb, runnerPhase: false)
