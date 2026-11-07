@@ -187,7 +187,7 @@ public struct SandboxBrain: PlayerBrain {
     public static func routeWaypoints(lane: Lane, route: RouteKind) -> [Vec2] {
         let x = lane == .center ? Float(7) : lane.centerX
         switch route {
-        case .deep: return [Vec2(x * 0.9, 32)]
+        case .deep: return [Vec2(x, 32)]
         case .mid: return [Vec2(x, 10), Vec2(x * 0.45, 15)]
         case .short: return [Vec2(x, 5.5)]
         case .flat: return [Vec2(lane == .backfield ? 14 : x * 1.2, 1.5)]
