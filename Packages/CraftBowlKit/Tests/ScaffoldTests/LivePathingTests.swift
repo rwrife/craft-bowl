@@ -7,6 +7,41 @@ import XCTest
 
 /// Bounded #25 slice: verify Arrive and Avoid reach live AI intents, not only standalone tests.
 final class LivePathingTests: XCTestCase {
+    func testDeepVerticalFollowsLaneCenterInCardAndLiveAI() throws {
+        let loaded = try Playbook.loadBundled()
+        let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "four_verts" })
+        let defense = try XCTUnwrap(loaded.playbook.defense.first)
+        let los: Float = 40
+        var world = World(seed: 30)
+        let ratings = Ratings(power: 50, speed: 50, endurance: 50)
+        let qb = world.spawn(.qb, ratings: ratings, number: 12, at: Vec2(0, los - 4.5))
+        world.ball = .held(by: qb)
+        let columns: [(Lane, Float, Float)] = [
+            (.left, -17, Field.laneCenterX(-1)), (.center, 7, 7),
+            (.right, 17, Field.laneCenterX(1)),
+        ]
+        let card = PlayDiagram(play: offense)
+        for (lane, startX, targetX) in columns {
+            XCTAssertEqual(SandboxBrain.routeWaypoints(lane: lane, route: .deep), [Vec2(targetX, 32)])
+            let stroke = try XCTUnwrap(
+                card.strokes.first {
+                    $0.style == .route && $0.points.first?.x == startX
+                        && $0.points.last?.y == PlayDiagram.maxY
+                })
+            XCTAssertEqual(stroke.points.last?.x, startX + (targetX - startX) * (PlayDiagram.maxY + 1) / 33)
+            world.spawn(lane.slotPosition, ratings: ratings, number: 88, at: Vec2(startX, los - 1))
+        }
+        let context = PlayContext(
+            offense: offense, defense: defense, lineOfScrimmage: los,
+            isLive: true, liveTicks: 1, controlled: qb, runnerPhase: false)
+        var brain = SandboxBrain()
+        _ = brain.intents(world: world, context: context)
+        for (lane, _, targetX) in columns {
+            let receiver = try XCTUnwrap(world.player(at: lane.slotPosition))
+            XCTAssertEqual(brain.aimPoints[receiver.id], Vec2(targetX, los + 32))
+        }
+    }
+
     func testCenterSlotRoutesStartFromItsFormationSide() throws {
         let loaded = try Playbook.loadBundled()
         let offense = try XCTUnwrap(loaded.playbook.offense.first { $0.id == "spread_pass" })
