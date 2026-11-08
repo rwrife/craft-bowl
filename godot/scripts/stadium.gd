@@ -400,7 +400,7 @@ func _build_stadium() -> void:
 		var color = concrete.darkened(0.14 if row % 2 else 0.0)
 		var spans = [[-half, half]]
 		if row <= 8:
-			spans = [[-half, -TUNNEL_X - 4.6], [-TUNNEL_X + 4.6, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, half]]
+			spans = [[-half, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, half]]
 		for span in spans:
 			_box(self, Vector3((span[0] + span[1]) * 0.5, (base + height) * 0.5, z),
 				Vector3(span[1] - span[0], height - base, depth), color)
@@ -412,14 +412,13 @@ func _build_stadium() -> void:
 			if slot == 15 or slot == 31:
 				stairs.append({"pos": Vector3(seat_x, height + 0.05, z), "size": Vector3(SEAT_PITCH, 0.1, depth)})
 				continue
-			if row <= 9 and absf(absf(seat_x) - TUNNEL_X) < 5.6:
+			if row <= 9 and absf(seat_x - TUNNEL_X) < 5.6:
 				continue
 			stand_seats.append(_new_seat(rng, Vector3(seat_x, height, z), PI, row))
 			chairs.append({"pos": Vector3(seat_x, height + 0.3, z - 0.36), "size": Vector3(0.64, 0.5, 0.08)})
 	_add_multibox(stairs, Color("59627a"))
 	_add_multibox(chairs, Color("1d2b50"))
-	for tunnel_x in [-TUNNEL_X, TUNNEL_X]:
-		_team_tunnel(tunnel_x)
+	_team_tunnel(TUNNEL_X)
 	var top_out = 20.5 + float(UPPER_ROWS) * 0.95
 	var back_length = 26.0 + STAND_INNER_END + top_out + 1.0
 	for side in [-1.0, 1.0]:
@@ -576,7 +575,7 @@ func _build_dressing() -> void:
 			_panel_label(Vector3(ribbon_x - side * 0.05, 21.25, z), text, 1.5, 22.0, yaw, Color("dff6ff"))
 	var end_z = -(STAND_INNER_END - 0.85)
 	var segments = [
-		[-STAND_INNER_SIDE, -TUNNEL_X - 4.6], [-TUNNEL_X + 4.6, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, STAND_INNER_SIDE],
+		[-STAND_INNER_SIDE, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, STAND_INNER_SIDE],
 	]
 	for segment in segments:
 		var width = segment[1] - segment[0]
@@ -587,6 +586,7 @@ func _build_dressing() -> void:
 	_ad_panel(Vector3(-11.0, 1.3, end_front), 19.0, 1.9, 0.0, home_color.darkened(0.25), home_name, Color("f6f6f6"))
 	clock_labels.append(_ad_panel(Vector3(0, 1.3, end_front + 0.01), 3.2, 1.9, 0.0, Color("05070b"), "Q1  3:00", Color("ffb627")))
 	_ad_panel(Vector3(11.0, 1.3, end_front), 19.0, 1.9, 0.0, AD_COLORS[0].darkened(0.2), ADS[0], Color("fff8e6"))
+	_ad_panel(Vector3(-26.0, 1.3, end_front), 9.0, 1.9, 0.0, away_color.darkened(0.25), away_name, Color("f6f6f6"))
 	for x in [-34.8, 34.8]:
 		_ad_panel(Vector3(x, 1.3, end_front), 7.0, 1.9, 0.0, AD_COLORS[2].darkened(0.2), ADS[3], Color("fff8e6"))
 	var end_ribbon_z = -(STAND_INNER_END + 19.98)
@@ -594,15 +594,11 @@ func _build_dressing() -> void:
 		home_color.darkened(0.55), true)
 	for x in [-38.0, 38.0]:
 		_panel_label(Vector3(x, 21.25, end_ribbon_z + 0.05), home_name, 1.5, 34.0, 0.0, Color("dff6ff"))
-	for tunnel in [[-TUNNEL_X, home], [TUNNEL_X, away]]:
-		var tunnel_x: float = tunnel[0]
-		var team: Dictionary = tunnel[1]
-		var color: Color = team["primary"]
-		for edge in [-1.0, 1.0]:
-			_box(dressing_root, Vector3(tunnel_x + edge * 4.15, 3.3, end_front + 0.1), Vector3(0.9, 6.6, 0.5), color)
-		_box(dressing_root, Vector3(tunnel_x, 7.0, end_front + 0.1), Vector3(9.2, 1.4, 0.5), color.darkened(0.15))
-		_panel_label(Vector3(tunnel_x, 7.0, end_front + 0.37), String(team["nickname"]).to_upper(), 1.0, 8.4, 0.0, team["secondary"].lightened(0.35))
-		_box(dressing_root, Vector3(tunnel_x, 6.2, end_front + 0.36), Vector3(8.0, 0.12, 0.08), Color("fff3c8"), true)
+	for edge in [-1.0, 1.0]:
+		_box(dressing_root, Vector3(TUNNEL_X + edge * 4.15, 3.3, end_front + 0.1), Vector3(0.9, 6.6, 0.5), home_color)
+	_box(dressing_root, Vector3(TUNNEL_X, 7.0, end_front + 0.1), Vector3(9.2, 1.4, 0.5), home_color.darkened(0.15))
+	_panel_label(Vector3(TUNNEL_X, 7.0, end_front + 0.37), String(home["nickname"]).to_upper(), 1.0, 8.4, 0.0, home["secondary"].lightened(0.35))
+	_box(dressing_root, Vector3(TUNNEL_X, 6.2, end_front + 0.36), Vector3(8.0, 0.12, 0.08), Color("fff3c8"), true)
 	_build_crowd(home, away)
 
 
@@ -885,6 +881,9 @@ func _build_sideline_multimeshes(
 ) -> void:
 	var jersey: Color = Color("eef0f2") if side > 0.0 else team["primary"]
 	var pants: Color = Color("111825") if coaches else (Color("d5d9e0") if side > 0.0 else team["primary"].darkened(0.62))
+	var trim: Color = team["primary"] if side > 0.0 else team["secondary"]
+	var helmet: Color = team["primary"].darkened(0.2) if side > 0.0 else team["primary"]
+	var mask = Color("c9ced8")
 	var parts: Array
 	if coaches:
 		parts = [
@@ -903,8 +902,11 @@ func _build_sideline_multimeshes(
 			{"size": Vector3(0.82, 0.18, 0.44), "offset": Vector3(0, 1.43, 0), "color": jersey},
 			{"size": Vector3(0.52, 0.16, 0.34), "offset": Vector3(0, 0.68, 0), "color": pants},
 			{"size": Vector3(0.38, 0.38, 0.38), "offset": Vector3(0, 1.78, 0), "color": "skin"},
-			{"size": Vector3(0.46, 0.37, 0.44), "offset": Vector3(0, 1.81, 0), "color": jersey},
-			{"size": Vector3(0.08, 0.025, 0.43), "offset": Vector3(0, 2.01, 0), "color": team["secondary"]},
+			{"size": Vector3(0.84, 0.05, 0.18), "offset": Vector3(0, 1.43, 0), "color": trim},
+			{"size": Vector3(0.46, 0.37, 0.44), "offset": Vector3(0, 1.81, 0), "color": helmet},
+			{"size": Vector3(0.08, 0.025, 0.45), "offset": Vector3(0, 2.0, 0), "color": trim},
+			{"size": Vector3(0.38, 0.035, 0.06), "offset": Vector3(0, 1.72, -0.24), "color": mask},
+			{"size": Vector3(0.38, 0.035, 0.06), "offset": Vector3(0, 1.8, -0.24), "color": mask},
 			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(-0.43, 1.11, 0), "color": jersey, "arm": -1},
 			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(0.43, 1.11, 0), "color": jersey, "arm": 1},
 			{"size": Vector3(0.24, 0.54, 0.25), "offset": Vector3(-0.17, 0.34, 0), "color": pants},
@@ -1052,7 +1054,20 @@ func _build_ball() -> void:
 func _build_effects() -> void:
 	confetti = _particles(160, 2.5, Color("ffdc42"), 0.16, true, 5.0, 11.0, 10.0)
 	impact_sparks = _turf_kickup()
-	turbo_trail = _particles(32, 0.38, Color("42caff"), 0.1, false, 1.0, 3.5, 1.0)
+	turbo_trail = _particles(18, 0.3, Color("42caff"), 0.055, false, 0.6, 1.8, 0.6)
+	var trail_process: ParticleProcessMaterial = turbo_trail.process_material
+	var fade = Gradient.new()
+	fade.set_color(0, Color(0.55, 0.88, 1.0, 0.42))
+	fade.set_color(1, Color(0.55, 0.88, 1.0, 0.0))
+	var ramp = GradientTexture1D.new()
+	ramp.gradient = fade
+	trail_process.color = Color.WHITE
+	trail_process.color_ramp = ramp
+	var trail_material: StandardMaterial3D = (turbo_trail.draw_pass_1 as BoxMesh).material
+	trail_material.albedo_color = Color.WHITE
+	trail_material.vertex_color_use_as_albedo = true
+	trail_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	trail_material.emission_enabled = false
 	event_light = OmniLight3D.new()
 	event_light.light_color = Color("55dfff")
 	event_light.light_energy = 0.0
