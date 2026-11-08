@@ -24,6 +24,36 @@ Swift package. Run `make open` after a fresh checkout. Edit `project.yml` instea
 
 If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 
+## Portable Godot game
+
+The Godot 4.4.1 project at the repository root is a cross-platform runtime for the game. It reuses the
+shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
+simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
+stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights, bloom,
+turbo trails, tackle sparks, and touchdown confetti. The sideline has a wider marked team area with
+benches, reserve players, and coaches. Crowd characters use detailed block models in the nearest four
+rows, lighter block models in the middle rows, then camera-facing pixel billboards farther away. The
+Swift/iOS app remains available in `App/` and `Packages/`.
+
+Open `project.godot` in Godot 4.4.1 or later and run the project. The Godot project uses the
+Compatibility renderer and a 1280×720 landscape viewport. To run the deterministic gameplay tests:
+
+```sh
+godot --headless --path . --script res://godot/tests/test_simulation.gd
+godot --headless --path . --script res://godot/tests/test_app_replay.gd
+```
+
+In-game controls: WASD/arrows or the left stick to move; J/K/L or X/A/B to select/pass; H or Y to
+handoff; Space or the right trigger to turbo; U or the right shoulder to dive; P/Escape or Menu to
+pause. The developer overlay is on `~`, a three-finger tap, or the controller Back/Select button and
+includes pause, slow-motion, autopilot, video toggles, and deterministic record/replay/verification.
+Touch devices use the on-screen stick and contextual action buttons.
+
+To package for another platform, install the matching Godot export template, add a preset for the
+target in **Project → Export**, then export the project. The scene and input implementation are not
+tied to Apple frameworks; platform-specific signing, store metadata, and export templates remain the
+responsibility of the target platform.
+
 ## CI status
 
 `main` PR/push CI now enforces all issue-#2 core gates on hosted macOS runners:
