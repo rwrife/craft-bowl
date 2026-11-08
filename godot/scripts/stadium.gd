@@ -54,9 +54,15 @@ var confetti: GPUParticles3D
 var impact_sparks: GPUParticles3D
 var turbo_trail: GPUParticles3D
 var event_light: OmniLight3D
+var firework_pool: Array = []
+var firework_queue: Array = []
+var firework_index = 0
+var pyro_jets: Array = []
+var pyro_time = 0.0
 var sideline_root: Node3D
 var sideline_groups: Array = []
 var materials: Dictionary = {}
+var pixel_textures: Dictionary = {}
 var focus = Vector2(0, 24)
 var game = null
 var elapsed = 0.0
@@ -192,13 +198,59 @@ func _update_camera(delta: float) -> void:
 	camera.look_at(Vector3(focus.x, 0.8, -(focus.y + 19.0)), Vector3.UP)
 
 
-func _material(color: Color, emissive: bool = false, transparent: bool = false) -> StandardMaterial3D:
-	var key = color.to_html(true) + str(emissive) + str(transparent)
+func _pixel_texture(kind: String) -> ImageTexture:
+	if pixel_textures.has(kind):
+		return pixel_textures[kind]
+	var rng = RandomNumberGenerator.new()
+	rng.seed = hash(kind)
+	var image = Image.create(16, 16, false, Image.FORMAT_RGB8)
+	for y in 16:
+		for x in 16:
+			var value = rng.randf_range(0.86, 1.0)
+			var tint = Color(1, 1, 1)
+			match kind:
+				"grass":
+					value = rng.randf_range(0.82, 1.0)
+					if rng.randf() < 0.07:
+						value = 0.74
+					tint = Color(rng.randf_range(0.94, 1.0), 1.0, rng.randf_range(0.88, 0.96))
+				"concrete":
+					value = rng.randf_range(0.82, 0.98)
+					if x == 0 or y == 0:
+						value = 0.66
+				"fabric":
+					value = rng.randf_range(0.9, 1.0) - (0.06 if (x + y) % 4 == 0 else 0.0)
+			image.set_pixel(x, y, Color(value * tint.r, value * tint.g, value * tint.b))
+	image.generate_mipmaps()
+	var texture = ImageTexture.create_from_image(image)
+	pixel_textures[kind] = texture
+	return texture
+
+
+func _apply_pixels(material: BaseMaterial3D, kind: String) -> void:
+	material.albedo_texture = _pixel_texture(kind)
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+	material.uv1_triplanar = true
+	match kind:
+		"grass":
+			material.uv1_world_triplanar = true
+			material.uv1_scale = Vector3.ONE * 0.55
+		"concrete":
+			material.uv1_world_triplanar = true
+			material.uv1_scale = Vector3.ONE * 0.5
+		_:
+			material.uv1_scale = Vector3.ONE * 1.25
+
+
+func _material(color: Color, emissive: bool = false, transparent: bool = false, kind: String = "block") -> StandardMaterial3D:
+	var key = color.to_html(true) + str(emissive) + str(transparent) + kind
 	if materials.has(key):
 		return materials[key]
 	var material = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.roughness = 0.85
+	if not emissive and not transparent and kind != "":
+		_apply_pixels(material, kind)
 	if emissive:
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		material.emission_enabled = true
@@ -211,12 +263,12 @@ func _material(color: Color, emissive: bool = false, transparent: bool = false) 
 	return material
 
 
-func _box(parent: Node, center: Vector3, size: Vector3, color: Color, emissive: bool = false) -> MeshInstance3D:
+func _box(parent: Node, center: Vector3, size: Vector3, color: Color, emissive: bool = false, kind: String = "block") -> MeshInstance3D:
 	var mesh = BoxMesh.new()
 	mesh.size = size
 	var instance = MeshInstance3D.new()
 	instance.mesh = mesh
-	instance.material_override = _material(color, emissive)
+	instance.material_override = _material(color, emissive, false, kind)
 	instance.position = center
 	parent.add_child(instance)
 	return instance
@@ -251,12 +303,13 @@ func _build_environment() -> void:
 
 
 func _build_field() -> void:
-	_box(self, Vector3(0, -0.13, -49), Vector3(FIELD_WIDTH + 34, 0.25, 158), Color("25462d"))
+	_box(self, Vector3(0, -0.13, -49), Vector3(FIELD_WIDTH + 34, 0.25, 158), Color("2f5a38"), false, "grass")
 	for side in [-1.0, 1.0]:
-		_box(self, Vector3(side * 32.0, 0.008, -60), Vector3(10.0, 0.03, 120), Color("2c5938"))
+		_box(self, Vector3(side * 32.0, 0.008, -60), Vector3(10.0, 0.03, 120), Color("376b42"), false, "grass")
 	for i in 24:
-		var color = Color("2f8a38") if i % 2 == 0 else Color("297b31")
-		_box(self, Vector3(0, 0.005, -(float(i) * 5.0 + 2.5)), Vector3(FIELD_WIDTH, 0.025, 5), color)
+		var color = Color("38a043") if i % 2 == 0 else Color("308e3a")
+		_box(self, Vector3(0, 0.005, -(float(i) * 5.0 + 2.5)), Vector3(FIELD_WIDTH, 0.025, 5), color, false, "grass")
+	_build_field_details()
 	for side in [-1.0, 1.0]:
 		_box(self, Vector3(side * (FIELD_WIDTH / 2.0 + 0.9), 0.05, -60), Vector3(1.8, 0.025, 123.6), Color("eef0ea"))
 		_box(self, Vector3(0, 0.05, -60 + side * 60.9), Vector3(FIELD_WIDTH + 3.6, 0.025, 1.8), Color("eef0ea"))
@@ -310,7 +363,61 @@ func _build_field() -> void:
 	first_down_line.position.y = 0.09
 
 
-func _add_multibox(entries: Array, color: Color) -> void:
+func _build_field_details() -> void:
+	var orange = Color("ff7a1a")
+	for x in [-FIELD_WIDTH / 2.0, FIELD_WIDTH / 2.0]:
+		for z in [0.0, -10.0, -110.0, -120.0]:
+			_box(self, Vector3(x, 0.32, z), Vector3(0.14, 0.6, 0.14), orange)
+			_box(self, Vector3(x, 0.45, z), Vector3(0.15, 0.08, 0.15), Color("f2f2f2"))
+	var arrows: Array = []
+	for yard in range(20, 101, 10):
+		if yard == 60:
+			continue
+		var toward = 1.0 if yard < 60 else -1.0
+		for side in [-1.0, 1.0]:
+			var x = side * (FIELD_WIDTH / 2.0 - 7.6)
+			var tip = -float(yard) + toward * 2.3
+			for step in 3:
+				var width = 0.5 - float(step) * 0.16
+				arrows.append({"pos": Vector3(x, 0.07, tip - toward * float(step) * 0.16), "size": Vector3(width, 0.02, 0.16)})
+	for z in [-12.0, -108.0]:
+		arrows.append({"pos": Vector3(0, 0.06, z), "size": Vector3(0.9, 0.025, 0.12)})
+	_add_multibox(arrows, Color("eef0ea"))
+	for z in [-121.0, 1.0]:
+		_box(self, Vector3(0, 1.2, z), Vector3(0.7, 2.4, 0.7), Color("1d2a4a"))
+		_box(self, Vector3(0, 2.35, z), Vector3(0.74, 0.1, 0.74), Color("ffc819"))
+		for x in [-3.08, 3.08]:
+			_box(self, Vector3(x, 10.15, z), Vector3(0.1, 0.1, 0.1), Color("ffc819"))
+			_box(self, Vector3(x + 0.18, 10.0, z), Vector3(0.3, 0.12, 0.04), orange, true)
+	for side in [-1.0, 1.0]:
+		var bench_x = side * 36.9
+		for z in [-52.0, -58.0, -64.0, -70.0]:
+			_box(self, Vector3(bench_x, 0.36, z), Vector3(0.62, 0.72, 0.62), orange)
+			_box(self, Vector3(bench_x, 0.76, z), Vector3(0.66, 0.08, 0.66), Color("f2f2f2"))
+		for z in [-48.5, -71.5]:
+			_box(self, Vector3(bench_x + side * 0.4, 0.45, z), Vector3(1.2, 0.08, 2.2), Color("cfd5df"))
+			for leg_z in [-0.9, 0.9]:
+				_box(self, Vector3(bench_x + side * 0.4, 0.21, z + leg_z), Vector3(1.0, 0.42, 0.06), Color("4b5263"))
+			for cup in 6:
+				_box(self, Vector3(bench_x + side * 0.4 + (float(cup % 2) - 0.5) * 0.4, 0.57, z + (float(cup / 2) - 1.0) * 0.5),
+					Vector3(0.12, 0.16, 0.12), Color("e9edf2"))
+		for z in [-55.0, -66.0]:
+			_box(self, Vector3(side * 37.6, 1.0, z), Vector3(0.9, 2.0, 0.9), Color("2a3140"))
+			_box(self, Vector3(side * 37.6 - side * 0.46, 1.25, z), Vector3(0.04, 0.9, 0.7), Color("ff6a2a"), true)
+		_box(self, Vector3(side * 35.8, 1.25, -40.5), Vector3(0.1, 2.5, 2.4), Color("e4e8ee"))
+		_box(self, Vector3(side * 35.8, 0.04, -40.5), Vector3(1.6, 0.08, 2.6), Color("23293a"))
+	for x in [-20.0, -14.0, -7.5, 8.0, 15.0, 21.0]:
+		var spot = Vector3(x, 0.0, -124.0 - absf(x) * 0.03)
+		_box(self, spot + Vector3(0, 0.42, 0), Vector3(0.5, 0.5, 0.36), Color("22252e"))
+		_box(self, spot + Vector3(0, 0.86, 0), Vector3(0.34, 0.34, 0.34), SKIN_COLORS[int(absf(x)) % SKIN_COLORS.size()])
+		_box(self, spot + Vector3(0, 1.06, 0), Vector3(0.38, 0.1, 0.38), Color("15171d"))
+		_box(self, spot + Vector3(0, 0.12, -0.2), Vector3(0.46, 0.24, 0.5), Color("2c3240"))
+		_box(self, spot + Vector3(0, 0.82, 0.3), Vector3(0.24, 0.24, 0.3), Color("0d0f14"))
+		_box(self, spot + Vector3(0, 0.82, 0.68), Vector3(0.16, 0.16, 0.5), Color("e5e7ea"))
+		_box(self, spot + Vector3(0, 0.82, 0.94), Vector3(0.12, 0.12, 0.02), Color("65c8ff"), true)
+
+
+func _add_multibox(entries: Array, color: Color, kind: String = "block") -> void:
 	var mesh = BoxMesh.new()
 	mesh.size = Vector3.ONE
 	var multimesh = MultiMesh.new()
@@ -322,7 +429,7 @@ func _add_multibox(entries: Array, color: Color) -> void:
 		multimesh.set_instance_transform(i, Transform3D(Basis().scaled(entry["size"]), entry["pos"]))
 	var instance = MultiMeshInstance3D.new()
 	instance.multimesh = multimesh
-	instance.material_override = _material(color)
+	instance.material_override = _material(color, false, false, kind)
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(instance)
 
@@ -349,6 +456,7 @@ func _new_seat(rng: RandomNumberGenerator, position: Vector3, yaw: float, row: i
 		"phase": rng.randf(),
 		"jump": rng.randf_range(0.35, 1.0),
 		"empty": rng.randf() < 0.05,
+		"lod": rng.randf(),
 	}
 
 
@@ -360,6 +468,8 @@ func _build_stadium() -> void:
 	stand_seats.clear()
 	var stairs: Array = []
 	var chairs: Array = []
+	var nosing: Array = []
+	var rails: Array = []
 	var total_rows = LOWER_ROWS + UPPER_ROWS
 	for side in [-1.0, 1.0]:
 		for row in total_rows:
@@ -372,7 +482,9 @@ func _build_stadium() -> void:
 			var z_far = -(STAND_INNER_END + out + depth)
 			var z_near = 26.0
 			_box(self, Vector3(x, (base + height) * 0.5, (z_near + z_far) * 0.5),
-				Vector3(depth, height - base, z_near - z_far), concrete.darkened(0.14 if row % 2 else 0.0))
+				Vector3(depth, height - base, z_near - z_far), concrete.darkened(0.14 if row % 2 else 0.0), false, "concrete")
+			nosing.append({"pos": Vector3(side * (STAND_INNER_SIDE + out + 0.04), height + 0.02, (z_near + z_far) * 0.5),
+				"size": Vector3(0.1, 0.06, z_near - z_far)})
 			var column = 0
 			var z = z_near - 0.6
 			while z > -(STAND_INNER_END + out):
@@ -382,6 +494,9 @@ func _build_stadium() -> void:
 				z -= SEAT_PITCH
 				if slot == 15 or slot == 31:
 					stairs.append({"pos": Vector3(x, height + 0.05, seat_z), "size": Vector3(depth, 0.1, SEAT_PITCH)})
+					if row % 2 == 0:
+						rails.append({"pos": Vector3(x, height + 0.5, seat_z), "size": Vector3(0.06, 0.9, 0.06)})
+						rails.append({"pos": Vector3(x, height + 0.95, seat_z), "size": Vector3(depth * 2.0, 0.06, 0.07)})
 					if slot == 15 and row == 12:
 						_vomitory(Vector3(side * (STAND_INNER_SIDE + 11.7), 0, seat_z), true)
 					continue
@@ -403,7 +518,9 @@ func _build_stadium() -> void:
 			spans = [[-half, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, half]]
 		for span in spans:
 			_box(self, Vector3((span[0] + span[1]) * 0.5, (base + height) * 0.5, z),
-				Vector3(span[1] - span[0], height - base, depth), color)
+				Vector3(span[1] - span[0], height - base, depth), color, false, "concrete")
+			nosing.append({"pos": Vector3((span[0] + span[1]) * 0.5, height + 0.02, z + depth * 0.5 - 0.04),
+				"size": Vector3(span[1] - span[0], 0.06, 0.1)})
 		var count = int((half * 2.0 - 1.0) / SEAT_PITCH)
 		var start = -float(count - 1) * SEAT_PITCH * 0.5
 		for column in count:
@@ -411,13 +528,19 @@ func _build_stadium() -> void:
 			var slot = column % 32
 			if slot == 15 or slot == 31:
 				stairs.append({"pos": Vector3(seat_x, height + 0.05, z), "size": Vector3(SEAT_PITCH, 0.1, depth)})
+				if row % 2 == 0:
+					rails.append({"pos": Vector3(seat_x, height + 0.5, z), "size": Vector3(0.06, 0.9, 0.06)})
+					rails.append({"pos": Vector3(seat_x, height + 0.95, z), "size": Vector3(0.07, 0.06, depth * 2.0)})
 				continue
 			if row <= 9 and absf(seat_x - TUNNEL_X) < 5.6:
 				continue
 			stand_seats.append(_new_seat(rng, Vector3(seat_x, height, z), PI, row))
 			chairs.append({"pos": Vector3(seat_x, height + 0.3, z - 0.36), "size": Vector3(0.64, 0.5, 0.08)})
-	_add_multibox(stairs, Color("59627a"))
-	_add_multibox(chairs, Color("1d2b50"))
+	_add_multibox(stairs, Color("59627a"), "concrete")
+	_add_multibox(chairs, Color("1d2b50"), "fabric")
+	_add_multibox(nosing, Color("8d96ab"))
+	_add_multibox(rails, Color("a8b0c0"))
+	_build_suites_and_rails()
 	_team_tunnel(TUNNEL_X)
 	var top_out = 20.5 + float(UPPER_ROWS) * 0.95
 	var back_length = 26.0 + STAND_INNER_END + top_out + 1.0
@@ -451,6 +574,54 @@ func _build_stadium() -> void:
 		_box(self, Vector3(0, 3.05, z), Vector3(6.2, 0.2, 0.2), yellow)
 		for x in [-3.08, 3.08]:
 			_box(self, Vector3(x, 6.5, z), Vector3(0.17, 7, 0.17), yellow)
+
+
+func _build_suites_and_rails() -> void:
+	var lower_top = _stand_row(LOWER_ROWS - 1)
+	var suite_out: float = lower_top["out"] + 1.0
+	var glass = _material(Color(0.62, 0.8, 1.0, 0.18), false, true)
+	var windows: Array = []
+	var mullions: Array = []
+	for side in [-1.0, 1.0]:
+		var x = side * (STAND_INNER_SIDE + suite_out)
+		var length = 26.0 + STAND_INNER_END + suite_out
+		var mid_z = 26.0 - length * 0.5
+		_box(self, Vector3(x + side * 0.4, 18.5, mid_z), Vector3(0.8, 3.1, length), Color("151b2a"), false, "concrete")
+		windows.append({"pos": Vector3(x - side * 0.02, 18.6, mid_z), "size": Vector3(0.05, 1.6, length)})
+		var z = 25.0
+		while z > -(STAND_INNER_END + suite_out):
+			mullions.append({"pos": Vector3(x - side * 0.06, 18.6, z), "size": Vector3(0.08, 1.7, 0.14)})
+			z -= 3.2
+		var rail_x = side * (STAND_INNER_SIDE + 20.45)
+		var rail_length = 26.0 + STAND_INNER_END + 20.5
+		var glass_panel = _box(self, Vector3(rail_x, 23.15, 26.0 - rail_length * 0.5), Vector3(0.05, 0.9, rail_length), Color.WHITE)
+		glass_panel.material_override = glass
+		_box(self, Vector3(rail_x, 23.62, 26.0 - rail_length * 0.5), Vector3(0.1, 0.07, rail_length), Color("b7bfcf"))
+	var end_z = -(STAND_INNER_END + suite_out)
+	var end_width = (STAND_INNER_SIDE + suite_out) * 2.0
+	_box(self, Vector3(0, 18.5, end_z - 0.4), Vector3(end_width, 3.1, 0.8), Color("151b2a"), false, "concrete")
+	windows.append({"pos": Vector3(0, 18.6, end_z + 0.02), "size": Vector3(end_width, 1.6, 0.05)})
+	var x_step = -end_width * 0.5
+	while x_step < end_width * 0.5:
+		mullions.append({"pos": Vector3(x_step, 18.6, end_z + 0.06), "size": Vector3(0.14, 1.7, 0.08)})
+		x_step += 3.2
+	var end_rail_z = -(STAND_INNER_END + 20.45)
+	var end_glass = _box(self, Vector3(0, 23.15, end_rail_z), Vector3((STAND_INNER_SIDE + 20.5) * 2.0, 0.9, 0.05), Color.WHITE)
+	end_glass.material_override = glass
+	_box(self, Vector3(0, 23.62, end_rail_z), Vector3((STAND_INNER_SIDE + 20.5) * 2.0, 0.07, 0.1), Color("b7bfcf"))
+	var window_mesh = BoxMesh.new()
+	window_mesh.size = Vector3.ONE
+	var window_multi = MultiMesh.new()
+	window_multi.transform_format = MultiMesh.TRANSFORM_3D
+	window_multi.mesh = window_mesh
+	window_multi.instance_count = windows.size()
+	for i in windows.size():
+		window_multi.set_instance_transform(i, Transform3D(Basis().scaled(windows[i]["size"]), windows[i]["pos"]))
+	var window_instance = MultiMeshInstance3D.new()
+	window_instance.multimesh = window_multi
+	window_instance.material_override = _material(Color("ffd9a0"), true)
+	add_child(window_instance)
+	_add_multibox(mullions, Color("0b0f18"))
 
 
 func _vomitory(front: Vector3, side_stand: bool) -> void:
@@ -620,8 +791,12 @@ func _flat_label(text: String, position: Vector3, pixel_size: float, color: Colo
 func _panel_label(position: Vector3, text: String, height: float, width: float, yaw: float, color: Color) -> Label3D:
 	var label = Label3D.new()
 	label.text = text
-	label.font_size = 96
-	label.pixel_size = minf(height * 0.6 / 96.0, width * 0.9 / (maxf(float(text.length()), 1.0) * 96.0 * 0.62))
+	var font_size = 22
+	label.font_size = font_size
+	label.pixel_size = minf(height * 0.6 / font_size, width * 0.9 / (maxf(float(text.length()), 1.0) * font_size * 0.62))
+	label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	label.alpha_scissor_threshold = 0.45
 	label.modulate = color
 	label.outline_size = 0
 	label.position = position
@@ -674,9 +849,14 @@ func _build_crowd(home: Dictionary, away: Dictionary) -> void:
 	for seat in stand_seats:
 		if seat["empty"]:
 			continue
-		if seat["row"] < 4:
+		var row: int = seat["row"]
+		var lod: float = seat["lod"]
+		# Randomly dither each tier boundary so detail falls off fan by fan instead of row by row.
+		var close_limit = 2.0 + lod * 6.0
+		var medium_limit = 9.0 + fmod(lod * 7.31, 1.0) * 12.0
+		if float(row) < close_limit and fmod(lod * 13.7, 1.0) > float(row) * 0.09:
 			close_seats.append(seat)
-		elif seat["row"] < 14:
+		elif float(row) < medium_limit or (row < LOWER_ROWS and fmod(lod * 29.3, 1.0) < 0.12):
 			medium_seats.append(seat)
 		else:
 			far_groups[_crowd_color_index(seat)].append(seat)
@@ -1001,6 +1181,19 @@ func _make_player(p: Dictionary, team: Dictionary, away: bool) -> Dictionary:
 	_box(root, Vector3(0, 1.9, -0.3), Vector3(0.42, 0.04, 0.07), mask)
 	for x in [-0.11, 0.11]:
 		_box(root, Vector3(x, 1.85, -0.3), Vector3(0.04, 0.16, 0.07), mask)
+	var dark = Color("13151c")
+	_box(root, Vector3(0, 1.72, 0), Vector3(0.84, 0.08, 0.5), jersey.darkened(0.08))
+	_box(root, Vector3(0, 1.71, -0.2), Vector3(0.26, 0.06, 0.1), dark)
+	_box(root, Vector3(0, 0.96, 0), Vector3(0.7, 0.07, 0.42), dark)
+	_box(root, Vector3(0, 0.96, -0.215), Vector3(0.12, 0.06, 0.02), Color("c9ced8"))
+	_box(root, Vector3(0, 1.31, -0.225), Vector3(0.6, 0.03, 0.02), jersey.darkened(0.12))
+	for x in [-0.26, 0.26]:
+		_box(root, Vector3(x, 1.94, 0), Vector3(0.02, 0.09, 0.09), dark)
+		_box(root, Vector3(x * 0.6, 1.74, -0.22), Vector3(0.05, 0.12, 0.05), dark)
+	for x in [-0.08, 0.08]:
+		_box(root, Vector3(x, 1.95, -0.272), Vector3(0.08, 0.025, 0.01), dark)
+	_box(root, Vector3(0, 2.05, -0.27), Vector3(0.44, 0.07, 0.02), helmet.darkened(0.25))
+	_box(root, Vector3(0, 1.94, 0.27), Vector3(0.18, 0.12, 0.02), trim)
 	var limbs = {}
 	for side in [-1, 1]:
 		var side_name = "left" if side < 0 else "right"
@@ -1010,14 +1203,25 @@ func _make_player(p: Dictionary, team: Dictionary, away: bool) -> Dictionary:
 		_box(arm, Vector3(0, -0.17, 0), Vector3(0.22, 0.35, 0.24), jersey)
 		_box(arm, Vector3(0, -0.3, 0), Vector3(0.23, 0.06, 0.25), trim)
 		_box(arm, Vector3(0, -0.45, 0), Vector3(0.2, 0.26, 0.2), skin)
+		_box(arm, Vector3(0, -0.4, 0), Vector3(0.21, 0.05, 0.21), Color("e8ebef"))
+		_box(arm, Vector3(0, -0.55, 0), Vector3(0.215, 0.05, 0.215), trim)
 		_box(arm, Vector3(0, -0.63, 0), Vector3(0.22, 0.12, 0.22), Color("16181f"))
+		_box(arm, Vector3(0, -0.02, 0), Vector3(0.3, 0.12, 0.3), jersey.darkened(0.05))
+		_box(arm, Vector3(side * 0.09, 0.02, 0), Vector3(0.12, 0.08, 0.26), trim)
 		limbs[side_name + "_arm"] = arm
 		var leg = Node3D.new()
 		leg.position = Vector3(side * 0.17, 0.96, 0)
 		root.add_child(leg)
 		_box(leg, Vector3(0, -0.23, 0), Vector3(0.27, 0.46, 0.29), pants)
-		_box(leg, Vector3(0, -0.66, 0), Vector3(0.24, 0.4, 0.24), trim if not away else jersey)
+		var sock: Color = trim if not away else jersey
+		_box(leg, Vector3(0, -0.66, 0), Vector3(0.24, 0.4, 0.24), sock)
+		_box(leg, Vector3(0, -0.6, 0), Vector3(0.245, 0.06, 0.245), primary if not away else trim)
+		_box(leg, Vector3(0, -0.4, -0.12), Vector3(0.22, 0.14, 0.08), pants.lightened(0.12))
+		_box(leg, Vector3(side * 0.135, -0.22, 0), Vector3(0.02, 0.42, 0.06), trim)
+		_box(leg, Vector3(0, -0.82, 0), Vector3(0.25, 0.06, 0.25), Color("eceff2"))
 		_box(leg, Vector3(0, -0.91, -0.06), Vector3(0.28, 0.13, 0.38), Color("10121a"))
+		_box(leg, Vector3(0, -0.975, -0.06), Vector3(0.29, 0.03, 0.39), Color("f2f2f2"))
+		_box(leg, Vector3(side * 0.141, -0.9, -0.06), Vector3(0.01, 0.05, 0.22), trim)
 		limbs[side_name + "_leg"] = leg
 	for facing in [0.0, PI]:
 		var number = Label3D.new()
@@ -1031,6 +1235,15 @@ func _make_player(p: Dictionary, team: Dictionary, away: bool) -> Dictionary:
 		number.rotation.y = facing
 		number.no_depth_test = false
 		root.add_child(number)
+	for side in [-1.0, 1.0]:
+		var shoulder = Label3D.new()
+		shoulder.text = str(p["number"])
+		shoulder.font_size = 48
+		shoulder.pixel_size = 0.0036
+		shoulder.outline_size = 0
+		shoulder.modulate = trim
+		shoulder.transform = Transform3D(Basis(Vector3.FORWARD, side * PI / 2.0), Vector3(side * 0.505, 1.6, 0))
+		root.add_child(shoulder)
 	var marker = MeshInstance3D.new()
 	var ring = TorusMesh.new()
 	ring.inner_radius = 0.5
@@ -1068,12 +1281,105 @@ func _build_effects() -> void:
 	trail_material.vertex_color_use_as_albedo = true
 	trail_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	trail_material.emission_enabled = false
+	_build_fireworks()
 	event_light = OmniLight3D.new()
 	event_light.light_color = Color("55dfff")
 	event_light.light_energy = 0.0
 	event_light.omni_range = 12.0
 	event_light.shadow_enabled = false
 	add_child(event_light)
+
+
+func _build_fireworks() -> void:
+	for i in 10:
+		var burst = GPUParticles3D.new()
+		burst.amount = 140
+		burst.lifetime = 1.9
+		burst.one_shot = true
+		burst.explosiveness = 0.97
+		burst.emitting = false
+		burst.local_coords = false
+		burst.visibility_aabb = AABB(Vector3(-40, -40, -40), Vector3(80, 80, 80))
+		var process = ParticleProcessMaterial.new()
+		process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		process.emission_sphere_radius = 0.4
+		process.spread = 180.0
+		process.initial_velocity_min = 9.0
+		process.initial_velocity_max = 13.0
+		process.damping_min = 3.5
+		process.damping_max = 5.0
+		process.gravity = Vector3(0, -4.5, 0)
+		var shrink = Curve.new()
+		shrink.add_point(Vector2(0, 1))
+		shrink.add_point(Vector2(0.7, 0.75))
+		shrink.add_point(Vector2(1, 0))
+		var shrink_texture = CurveTexture.new()
+		shrink_texture.curve = shrink
+		process.scale_curve = shrink_texture
+		burst.process_material = process
+		var block = BoxMesh.new()
+		block.size = Vector3.ONE * 0.32
+		var material = StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.vertex_color_use_as_albedo = true
+		block.material = material
+		burst.draw_pass_1 = block
+		add_child(burst)
+		var flash = OmniLight3D.new()
+		flash.omni_range = 45.0
+		flash.light_energy = 0.0
+		flash.shadow_enabled = false
+		burst.add_child(flash)
+		firework_pool.append({"node": burst, "flash": flash, "time": 0.0})
+	for x in [-FIELD_WIDTH / 2.0 - 1.5, FIELD_WIDTH / 2.0 + 1.5]:
+		for z in [-123.0, 3.0]:
+			var jet = _particles(60, 0.9, Color("ffb23a"), 0.14, false, 9.0, 14.0, 9.0)
+			var jet_process: ParticleProcessMaterial = jet.process_material
+			jet_process.spread = 8.0
+			jet.position = Vector3(x, 0.3, z)
+			_box(self, Vector3(x, 0.2, z), Vector3(0.7, 0.4, 0.7), Color("1a1d26"))
+			pyro_jets.append(jet)
+
+
+func _launch_fireworks(home_color: Color, away_color: Color) -> void:
+	var palette = [home_color.lightened(0.25), Color("ffd84a"), Color("ffffff"), Color("ff4a6e"), Color("49e6ff"), Color("8aff5a")]
+	var rng = RandomNumberGenerator.new()
+	rng.seed = game.play_number * 31 + 7
+	firework_queue.clear()
+	for i in 16:
+		var side = -1.0 if i % 2 == 0 else 1.0
+		var spot = Vector3(side * rng.randf_range(10.0, 48.0), rng.randf_range(34.0, 58.0), -rng.randf_range(20.0, 150.0))
+		if i % 5 == 4:
+			spot = Vector3(rng.randf_range(-30.0, 30.0), rng.randf_range(40.0, 60.0), -rng.randf_range(135.0, 155.0))
+		firework_queue.append({"time": float(i) * 0.28 + rng.randf_range(0.0, 0.2), "pos": spot, "color": palette[rng.randi_range(0, palette.size() - 1)]})
+	pyro_time = 2.6
+
+
+func _update_fireworks(delta: float) -> void:
+	for i in range(firework_queue.size() - 1, -1, -1):
+		var shot: Dictionary = firework_queue[i]
+		shot["time"] -= delta
+		if shot["time"] > 0.0:
+			continue
+		firework_queue.remove_at(i)
+		var slot: Dictionary = firework_pool[firework_index % firework_pool.size()]
+		firework_index += 1
+		var burst: GPUParticles3D = slot["node"]
+		var color: Color = shot["color"]
+		var process: ParticleProcessMaterial = burst.process_material
+		process.color = Color(color.r * 2.4, color.g * 2.4, color.b * 2.4)
+		burst.position = shot["pos"]
+		burst.restart()
+		burst.emitting = true
+		var flash: OmniLight3D = slot["flash"]
+		flash.light_color = color
+		slot["time"] = 0.5
+	for slot in firework_pool:
+		slot["time"] = maxf(0.0, slot["time"] - delta)
+		slot["flash"].light_energy = 6.0 * slot["time"] / 0.5
+	pyro_time = maxf(0.0, pyro_time - delta)
+	for jet in pyro_jets:
+		jet.emitting = pyro_time > 0.0
 
 
 func _particles(
@@ -1185,6 +1491,7 @@ func _update_effects(delta: float) -> void:
 			confetti.position = Vector3(0.0, 0.8, -game.last_spot.y)
 			confetti.restart()
 			confetti.emitting = true
+			_launch_fireworks(game.home["primary"], game.away["primary"])
 			event_light.light_color = Color("ffdb43")
 			event_light.omni_range = 22.0
 			event_light_time = 0.45
@@ -1192,6 +1499,7 @@ func _update_effects(delta: float) -> void:
 			impact_sparks.position = Vector3(impact.x, 0.05, impact.z)
 			impact_sparks.restart()
 			impact_sparks.emitting = true
+	_update_fireworks(delta)
 	if event_light_time > 0.0:
 		event_light_time = maxf(0.0, event_light_time - delta)
 		event_light.light_energy = 8.0 * event_light_time / 0.45

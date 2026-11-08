@@ -536,6 +536,32 @@ func _play_sfx(stream: AudioStream) -> void:
 	sfx_player.play()
 
 
+func play_thud() -> void:
+	if not audio_enabled:
+		return
+	var rate = 22050
+	var samples = int(rate * 0.55)
+	var data = PackedByteArray()
+	data.resize(samples * 2)
+	var noise = RandomNumberGenerator.new()
+	noise.seed = 4411
+	var phase = 0.0
+	for i in samples:
+		var t = float(i) / rate
+		phase += TAU * lerpf(95.0, 38.0, minf(t / 0.3, 1.0)) / rate
+		var body = sin(phase) * exp(-t * 7.5)
+		var crack = noise.randf_range(-1.0, 1.0) * exp(-t * 45.0) * 0.55
+		data.encode_s16(i * 2, int(clampf(body + crack, -1.0, 1.0) * 30000.0))
+	var stream = AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = rate
+	stream.data = data
+	var player = _make_audio_player(stream, false)
+	player.volume_db = linear_to_db(maxf(0.0001, settings["master"] * settings["sfx"])) + 3.0
+	player.finished.connect(player.queue_free)
+	player.play()
+
+
 func _play_cheer() -> void:
 	if not audio_enabled:
 		return

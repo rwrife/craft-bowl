@@ -151,12 +151,17 @@ func _build_title() -> void:
 	_backdrop(0.52)
 	var box = _centered_box(700)
 	var logo = TitleLogo.new()
+	if app.has_method("play_thud"):
+		logo.landed.connect(app.play_thud)
 	box.add_child(logo)
 	var kickoff = _button("KICKOFF", Color(0.04, 0.48, 0.87, 0.94), Vector2(700, 58))
+	kickoff.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	kickoff.pressed.connect(app.set_screen.bind("team_select"))
 	box.add_child(kickoff)
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
+	row.custom_minimum_size.x = 700
+	row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(row)
 	var manage = _button("MANAGE TEAMS", Color(0.87, 0.43, 0.09, 0.94), Vector2(344, 58))
 	manage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
