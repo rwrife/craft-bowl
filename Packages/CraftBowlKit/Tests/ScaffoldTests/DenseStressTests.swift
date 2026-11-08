@@ -88,4 +88,29 @@ final class DenseStressTests: XCTestCase {
             XCTAssertLessThanOrEqual(worstOverlap(world), slack, "overlap grew at tick \(world.tick)")
         }
     }
+
+    /// Players crushed into a tight corner at the intersection of sideline and endline walls:
+    /// the pile must not escape the field boundary or overlap beyond slack.
+    func testCornerCrushPileNeverOverlapsOrEscapes() {
+        var world = World(seed: 14)
+        let cornerX = Field.wallHalfWidth - World.playerRadius
+        let cornerY = Field.wallMaxY - World.playerRadius
+        for i in 0..<18 {
+            world.spawn(
+                i % 2 == 0 ? .lt : .deL,
+                ratings: Ratings(power: 50 + (i % 3) * 20, speed: 70, endurance: 60),
+                number: i,
+                at: Vec2(cornerX - Float(i % 2) * 0.15, cornerY - Float(i % 3) * 0.15))
+        }
+        let pushCorner = Dictionary(
+            uniqueKeysWithValues: world.players.map { ($0.id, PlayerIntent(move: Vec2(1, 1))) })
+        for _ in 0..<60 {
+            world.step(intents: pushCorner)
+            XCTAssertLessThanOrEqual(worstOverlap(world), slack, "overlap grew at tick \(world.tick)")
+            for p in world.players {
+                XCTAssertLessThanOrEqual(p.location.x, cornerX + 1e-4, "player escaped wall x at tick \(world.tick)")
+                XCTAssertLessThanOrEqual(p.location.y, cornerY + 1e-4, "player escaped wall y at tick \(world.tick)")
+            }
+        }
+    }
 }

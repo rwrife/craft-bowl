@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-11-08 run (selection checkpoint)
+
+- Timestamp: `2026-11-08T06:25:09Z`. GitHub preflight passed; `origin/main` = `d303f75e932aff4bbeee2cf7f1127e993a380741`. Open PR snapshot: 0; none reviewed, merged or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Latest main [CI 42348757234](https://github.com/rwrife/craft-bowl/actions/runs/42348757234) SUCCESS. Closure audit: #4 needs interactive runtime evidence; #25 still lacks universal non-overlap proof; #30 debug-view acceptance remains interactive-gated. No closure.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25) for bounded corner-collision regression; dependency #24 CLOSED. Branch `fix/issue-25-corner-pile` in dedicated worktree `.worktrees/issue-25-corner-pile` from `origin/main`. Older worktrees untouched. Full issue remains open pending comprehensive acceptance audit.
+- Actions: RED regression at tick 1 measured 0.0057447553 yards of corner overlap with 72 sweeps (limit 0.005). Raised fixed relaxation cap to 128 without changing collision weights, event deduplication or walls; GREEN corner stress test passed across 60 ticks. Bounded slice only; no universal non-overlap claim.
+- Verification: Docker Swift 6.0 neutral mirror (`swift test --scratch-path /tmp/cb-corner-green -Xswiftc -warnings-as-errors --filter DenseStressTests`): 4/4 PASS; full suite (`swift test --scratch-path /tmp/cb-corner-full -Xswiftc -warnings-as-errors`): 105/105 PASS. Mirror's touched source/test matched worktree via `cmp`. Strict changed-file `swift format lint --strict --configuration .swift-format` PASS; `bash scripts/check-sim-rng.sh` PASS (22 files); staged diff check PASS. Read-only independent Codex review of staged tree `b759f33c30b3acece217a1ef7d9b144920102079` PASS with zero blockers; numeric Float32 reproduction supports bounded fixture. Linux lacks Xcode/Metal/iOS Simulator; no native Apple/device/signing/publication evidence. PR publication and CI pending.
+
 ## 2026-11-07 run (closeout checkpoint)
 
 - Timestamp: `2026-11-07T06:24:13Z`; GitHub preflight passed; initial `origin/main` = `d4ab33af0f1c7af5eaa927aff00b27c4f74775ca`. Initial open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Main [CI 42178767817](https://github.com/rwrife/craft-bowl/actions/runs/42178767817) SUCCESS at exact head. Closure audit: #4 still requires interactive toggle/hot-reload evidence; #25 lacks universal no-overlap proof; #30 debug-view acceptance remains interactive-gated. No closure.
