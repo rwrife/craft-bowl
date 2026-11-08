@@ -30,12 +30,17 @@ The Godot 4.4.1 project at the repository root is a cross-platform runtime for t
 shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
 simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
 stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights, bloom,
-turbo trails, turf kick-up on tackles, and touchdown confetti. Its stacked bowl has a slight upper-deck overhang,
-electronic ribbon ads, and a lit jumbo tron above the far end zone. The wider sidelines include benches,
+turbo trails, turf kick-up on tackles, and touchdown confetti. Its stacked bowl has a 52-row double deck
+with a slight upper-deck overhang, aisles, vomitories, roof-mounted light banks, team tunnels in the end-zone
+corners, LED ribbon boards, a padded lower barrier with team names, sponsor ads, and live game clocks, and a
+hanging jumbo tron with the live score. The field has painted team end zones, a midfield logo, yard numbers,
+a wide white border, and an on-field down-and-distance marker, viewed from a raised broadcast camera with a
+bottom score bug. Road teams wear white. The wider sidelines include benches,
 coaches, and 32 loosely scattered players per team between the 20-yard lines; they sway subtly and jump
 to cheer during live plays.
-Crowd characters use detailed block models in the nearest four rows, lighter block models in the middle
-rows, then camera-facing pixel billboards farther away. The Swift/iOS app remains available in `App/`
+Crowd characters face the field in team-heavy colors. The nearest four rows use detailed Minecraft-style
+models with faces, hair or caps, arm poses, and foam fingers; middle rows use lighter block models; farther
+rows use pixel billboards. Block fans bounce in a GPU shader as plays heat up. The Swift/iOS app remains available in `App/`
 and `Packages/`.
 
 Open `project.godot` in Godot 4.4.1 or later and run the project. The Godot project uses the

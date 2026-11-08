@@ -1,5 +1,6 @@
 extends Node3D
 
+const Simulation = preload("res://godot/scripts/simulation.gd")
 const FIELD_WIDTH = 53.333
 const CROWD_COLORS = [
 	Color("2457d6"), Color("d92b35"), Color("f5b82e"), Color("b8c5d5"),
@@ -8,6 +9,38 @@ const CROWD_COLORS = [
 const SKIN_COLORS = [
 	Color("f2c5a0"), Color("dba47e"), Color("ae7659"), Color("85533e"), Color("59382b"),
 ]
+const HAIR_COLORS = [
+	Color("2b1c12"), Color("5a3a20"), Color("111114"), Color("c9a15a"), Color("8a4b22"),
+]
+const ADS = [
+	"BLOCK COLA", "PIXEL PIZZA", "CUBE MOTORS", "CRAFT BANK",
+	"VOXEL WIRELESS", "REDSTONE ENERGY", "DIAMOND AIR", "OBSIDIAN INSURANCE",
+]
+const AD_COLORS = [
+	Color("c3262f"), Color("1f6fd1"), Color("e09a12"), Color("2a9a48"), Color("7a3cc9"), Color("e0571f"),
+]
+const STAND_INNER_SIDE = 38.6
+const STAND_INNER_END = 127.6
+const LOWER_ROWS = 26
+const UPPER_ROWS = 26
+const SEAT_PITCH = 0.95
+const TUNNEL_X = 26.0
+const CROWD_SHADER = """
+shader_type spatial;
+render_mode world_vertex_coords;
+
+uniform float excitement = 0.0;
+
+void vertex() {
+	float wave = max(0.0, sin(TIME * 7.5 + INSTANCE_CUSTOM.x * 6.2831853));
+	VERTEX.y += excitement * INSTANCE_CUSTOM.y * wave * 0.32;
+}
+
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ROUGHNESS = 1.0;
+}
+"""
 
 var camera: Camera3D
 var key_light: DirectionalLight3D
@@ -30,9 +63,27 @@ var elapsed = 0.0
 var event_light_time = 0.0
 var last_effect_play = -1
 var shadows_enabled = true
+var stand_seats: Array = []
+var dressing_root: Node3D
+var dressing_key = ""
+var clock_labels: Array = []
+var jumbo_title: Label3D
+var jumbo_score: Label3D
+var jumbo_clock: Label3D
+var last_clock_text = ""
+var crowd_material: ShaderMaterial
+var excitement = 0.0
+var down_marker: Node3D
+var down_marker_label: Label3D
 
 
 func _ready() -> void:
+	crowd_material = ShaderMaterial.new()
+	var shader = Shader.new()
+	shader.code = CROWD_SHADER
+	crowd_material.shader = shader
+	dressing_root = Node3D.new()
+	add_child(dressing_root)
 	_build_environment()
 	_build_field()
 	_build_stadium()
@@ -61,9 +112,14 @@ func set_game(simulation) -> void:
 	for child in sideline_root.get_children():
 		child.queue_free()
 	sideline_groups.clear()
+	var key = "%s|%s" % [game.home["abbr"], game.away["abbr"]]
+	if key != dressing_key:
+		dressing_key = key
+		last_clock_text = ""
+		_build_dressing()
 	for p in game.players:
 		var team: Dictionary = game.home if p["offense"] else game.away
-		player_nodes.append(_make_player(p, team))
+		player_nodes.append(_make_player(p, team, not p["offense"]))
 	_build_sideline(game.home, -1.0)
 	_build_sideline(game.away, 1.0)
 	_update_camera(1.0)
@@ -87,6 +143,20 @@ func update_view(delta: float) -> void:
 	first_down_line.visible = game.phase != "dead"
 	_update_effects(delta)
 	_update_sidelines()
+	_update_displays()
+	var target = 0.12
+	if game.phase == "live":
+		target = 1.0
+	elif game.phase == "dead" and game.last_outcome == "touchdown":
+		target = 1.6
+	excitement = lerpf(excitement, target, clampf(delta * 3.0, 0.0, 1.0))
+	crowd_material.set_shader_parameter("excitement", excitement)
+	down_marker.visible = game.phase == "pre_snap"
+	down_marker.position = Vector3(0, 0, -(game.los - 6.5))
+	if down_marker.visible:
+		var ordinal = ["1st", "2nd", "3rd", "4th"][clampi(game.down - 1, 0, 3)]
+		var distance = "Goal" if game.first_down >= Simulation.GOAL_LINE else str(maxi(1, int(round(game.first_down - game.los))))
+		down_marker_label.text = "%s & %s" % [ordinal, distance]
 	for i in player_nodes.size():
 		var p: Dictionary = game.players[i]
 		var parts: Dictionary = player_nodes[i]
@@ -118,8 +188,8 @@ func _update_camera(delta: float) -> void:
 		desired = Vector2(clampf(ball_pos.x * 0.7, -12, 12), ball_pos.y)
 	var rate = 3.5 if game.phase == "live" else 2.0
 	focus = focus.lerp(desired, clampf(delta * rate, 0.0, 1.0))
-	camera.position = Vector3(focus.x, 9.0, -(focus.y - 15.0))
-	camera.look_at(Vector3(focus.x, 0.8, -(focus.y + 16.0)), Vector3.UP)
+	camera.position = Vector3(focus.x, 14.5, -(focus.y - 16.0))
+	camera.look_at(Vector3(focus.x, 0.8, -(focus.y + 19.0)), Vector3.UP)
 
 
 func _material(color: Color, emissive: bool = false, transparent: bool = false) -> StandardMaterial3D:
@@ -181,14 +251,41 @@ func _build_environment() -> void:
 
 
 func _build_field() -> void:
-	_box(self, Vector3(0, -0.13, -60), Vector3(FIELD_WIDTH + 34, 0.25, 136), Color("25462d"))
+	_box(self, Vector3(0, -0.13, -49), Vector3(FIELD_WIDTH + 34, 0.25, 158), Color("25462d"))
 	for side in [-1.0, 1.0]:
 		_box(self, Vector3(side * 32.0, 0.008, -60), Vector3(10.0, 0.03, 120), Color("2c5938"))
 	for i in 24:
-		var color = Color("399f42") if i % 2 == 0 else Color("328e39")
+		var color = Color("2f8a38") if i % 2 == 0 else Color("297b31")
 		_box(self, Vector3(0, 0.005, -(float(i) * 5.0 + 2.5)), Vector3(FIELD_WIDTH, 0.025, 5), color)
-	_box(self, Vector3(0, 0.025, -5), Vector3(FIELD_WIDTH, 0.025, 10), Color("2251a3"))
-	_box(self, Vector3(0, 0.025, -115), Vector3(FIELD_WIDTH, 0.025, 10), Color("2351a3"))
+	for side in [-1.0, 1.0]:
+		_box(self, Vector3(side * (FIELD_WIDTH / 2.0 + 0.9), 0.05, -60), Vector3(1.8, 0.025, 123.6), Color("eef0ea"))
+		_box(self, Vector3(0, 0.05, -60 + side * 60.9), Vector3(FIELD_WIDTH + 3.6, 0.025, 1.8), Color("eef0ea"))
+	for yard in range(20, 101, 10):
+		var number = str(yard - 10 if yard <= 60 else 110 - yard)
+		for side in [-1.0, 1.0]:
+			var label = Label3D.new()
+			label.text = number
+			label.font_size = 128
+			label.pixel_size = 0.02
+			label.modulate = Color("eef0ea")
+			label.outline_size = 0
+			label.shaded = true
+			label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+			label.transform = Transform3D(
+				Basis(Vector3.UP, side * PI / 2.0) * Basis(Vector3.RIGHT, -PI / 2.0),
+				Vector3(side * (FIELD_WIDTH / 2.0 - 7.6), 0.07, -yard))
+			add_child(label)
+	down_marker = Node3D.new()
+	add_child(down_marker)
+	_box(down_marker, Vector3(0, 0.1, 0), Vector3(6.2, 0.04, 2.4), Color("10141f"))
+	_box(down_marker, Vector3(0, 0.105, -1.0), Vector3(6.2, 0.04, 0.5), Color("ffd21f"), true)
+	down_marker_label = Label3D.new()
+	down_marker_label.font_size = 128
+	down_marker_label.pixel_size = 0.009
+	down_marker_label.outline_size = 0
+	down_marker_label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	down_marker_label.transform = Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(0, 0.13, 0.25))
+	down_marker.add_child(down_marker_label)
 	var marks = []
 	for yard in range(10, 111, 5):
 		marks.append({"pos": Vector3(0, 0.055, -yard), "size": Vector3(FIELD_WIDTH, 0.025, 0.14)})
@@ -230,69 +327,125 @@ func _add_multibox(entries: Array, color: Color) -> void:
 	add_child(instance)
 
 
+func _stand_row(row: int) -> Dictionary:
+	if row < LOWER_ROWS:
+		return {"out": float(row) * 0.9, "depth": 0.9, "height": 2.4 + float(row) * 0.58, "base": 0.0}
+	var upper_row = float(row - LOWER_ROWS)
+	return {"out": 20.5 + upper_row * 0.95, "depth": 0.95, "height": 22.5 + upper_row * 0.9, "base": 20.0}
+
+
+func _new_seat(rng: RandomNumberGenerator, position: Vector3, yaw: float, row: int) -> Dictionary:
+	return {
+		"pos": position,
+		"yaw": yaw,
+		"row": row,
+		"palette": rng.randi_range(0, CROWD_COLORS.size() - 1),
+		"pick": rng.randf(),
+		"skin": SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)],
+		"hair": HAIR_COLORS[rng.randi_range(0, HAIR_COLORS.size() - 1)],
+		"style": rng.randi_range(0, 3),
+		"pose": [0, 0, 0, 1, 2, 3][rng.randi_range(0, 5)],
+		"finger": rng.randf() < 0.14,
+		"phase": rng.randf(),
+		"jump": rng.randf_range(0.35, 1.0),
+		"empty": rng.randf() < 0.05,
+	}
+
+
 func _build_stadium() -> void:
-	var concrete = Color("242a3a")
-	var fascia = Color("101524")
-	var seats = []
-	var generator = RandomNumberGenerator.new()
-	generator.seed = 9328
+	var concrete = Color("2b3143")
+	var dark = Color("121725")
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 9328
+	stand_seats.clear()
+	var stairs: Array = []
+	var chairs: Array = []
+	var total_rows = LOWER_ROWS + UPPER_ROWS
 	for side in [-1.0, 1.0]:
-		for row in 36:
-			var upper = row >= 18
-			var x = 38.5 + float(row) * 0.9
-			var height = 0.9 + minf(float(row), 17.0) * 0.55
-			if upper:
-				x = 52.3 + float(row - 18) * 0.9
-				height = 12.35 + float(row - 18) * 0.8
-			var length = 146.0 if upper else 128.0
-			_box(self, Vector3(side * (x + 0.45), height * 0.5, 4.0 - length * 0.5),
-				Vector3(0.9, height, length), concrete.darkened(0.12 if row % 2 else 0.0))
-			for along in (124 if upper else 108):
-				var z = 2.0 - float(along) * 1.16
-				var palette = generator.randi_range(0, CROWD_COLORS.size() - 1)
-				seats.append({"pos": Vector3(side * (x + 0.45), height, z),
-					"color": CROWD_COLORS[palette], "palette": palette, "row": row,
-					"skin": SKIN_COLORS[generator.randi_range(0, SKIN_COLORS.size() - 1)]})
-		_box(self, Vector3(side * 36.9, 0.6, -60), Vector3(0.6, 1.2, 128), fascia)
-		for panel in 16:
-			var color: Color = CROWD_COLORS[(panel + int(side + 1.0) * 3) % CROWD_COLORS.size()]
-			_box(self, Vector3(side * 36.55, 0.65, 2.0 - panel * 8.0),
-				Vector3(0.08, 0.65, 7.3), color.lightened(0.3), true)
-		_box(self, Vector3(side * 52.1, 12.55, -60), Vector3(0.45, 0.8, 146), Color("29d8f2"), true)
-		for support in 8:
-			var support_z = -9.0 - float(support) * 14.5
-			_box(self, Vector3(side * 51.8, 6.2, support_z),
-				Vector3(0.8, 12.4, 0.9), fascia)
-		for corner in [-1.0]:
-			var corner_piece = _box(self,
-				Vector3(side * 43.5, 8.2, -60.0 + corner * 67.0),
-				Vector3(13.0, 1.4, 13.0), concrete)
-			corner_piece.rotation.y = side * corner * PI / 4.0
-		for z in [-8.0, -55.0, -105.0]:
-			_light_bank(Vector3(side * 73.5, 35, z), true)
-			_spotlight(Vector3(side * 70.0, 35.0, z), Vector3(0.0, 0.0, z), Color("dce8ff"))
-	for row in 30:
-		var upper = row >= 16
-		var distance = 125.0 + float(row) * 0.9
-		var height = 0.9 + minf(float(row), 15.0) * 0.55
-		if upper:
-			distance = 136.0 + float(row - 16) * 0.9
-			height = 11.0 + float(row - 16) * 0.8
-		var width = 135.0 if upper else 95.0
-		_box(self, Vector3(0, height * 0.5, -distance), Vector3(width, height, 0.9),
-			concrete.darkened(0.12 if row % 2 else 0.0))
-		for along in (120 if upper else 84):
-			var x = -width * 0.5 + 0.5 + float(along) * 1.12
-			var palette = generator.randi_range(0, CROWD_COLORS.size() - 1)
-			seats.append({"pos": Vector3(x, height, -distance),
-				"color": CROWD_COLORS[palette], "palette": palette, "row": row,
-				"skin": SKIN_COLORS[generator.randi_range(0, SKIN_COLORS.size() - 1)]})
-	_box(self, Vector3(0, 11.5, -136.5), Vector3(119, 0.8, 0.35), Color("f15b32"), true)
+		for row in total_rows:
+			var info = _stand_row(row)
+			var out: float = info["out"]
+			var depth: float = info["depth"]
+			var height: float = info["height"]
+			var base: float = info["base"]
+			var x = side * (STAND_INNER_SIDE + out + depth * 0.5)
+			var z_far = -(STAND_INNER_END + out + depth)
+			var z_near = 26.0
+			_box(self, Vector3(x, (base + height) * 0.5, (z_near + z_far) * 0.5),
+				Vector3(depth, height - base, z_near - z_far), concrete.darkened(0.14 if row % 2 else 0.0))
+			var column = 0
+			var z = z_near - 0.6
+			while z > -(STAND_INNER_END + out):
+				var slot = column % 32
+				var seat_z = z
+				column += 1
+				z -= SEAT_PITCH
+				if slot == 15 or slot == 31:
+					stairs.append({"pos": Vector3(x, height + 0.05, seat_z), "size": Vector3(depth, 0.1, SEAT_PITCH)})
+					if slot == 15 and row == 12:
+						_vomitory(Vector3(side * (STAND_INNER_SIDE + 11.7), 0, seat_z), true)
+					continue
+				if row >= 11 and row <= 14 and slot >= 12 and slot <= 18:
+					continue
+				stand_seats.append(_new_seat(rng, Vector3(x, height, seat_z), side * PI / 2.0, row))
+				chairs.append({"pos": Vector3(x + side * 0.36, height + 0.3, seat_z), "size": Vector3(0.08, 0.5, 0.64)})
+	for row in total_rows:
+		var info = _stand_row(row)
+		var out: float = info["out"]
+		var depth: float = info["depth"]
+		var height: float = info["height"]
+		var base: float = info["base"]
+		var z = -(STAND_INNER_END + out + depth * 0.5)
+		var half = STAND_INNER_SIDE + out
+		var color = concrete.darkened(0.14 if row % 2 else 0.0)
+		var spans = [[-half, half]]
+		if row <= 8:
+			spans = [[-half, -TUNNEL_X - 4.6], [-TUNNEL_X + 4.6, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, half]]
+		for span in spans:
+			_box(self, Vector3((span[0] + span[1]) * 0.5, (base + height) * 0.5, z),
+				Vector3(span[1] - span[0], height - base, depth), color)
+		var count = int((half * 2.0 - 1.0) / SEAT_PITCH)
+		var start = -float(count - 1) * SEAT_PITCH * 0.5
+		for column in count:
+			var seat_x = start + float(column) * SEAT_PITCH
+			var slot = column % 32
+			if slot == 15 or slot == 31:
+				stairs.append({"pos": Vector3(seat_x, height + 0.05, z), "size": Vector3(SEAT_PITCH, 0.1, depth)})
+				continue
+			if row <= 9 and absf(absf(seat_x) - TUNNEL_X) < 5.6:
+				continue
+			stand_seats.append(_new_seat(rng, Vector3(seat_x, height, z), PI, row))
+			chairs.append({"pos": Vector3(seat_x, height + 0.3, z - 0.36), "size": Vector3(0.64, 0.5, 0.08)})
+	_add_multibox(stairs, Color("59627a"))
+	_add_multibox(chairs, Color("1d2b50"))
+	for tunnel_x in [-TUNNEL_X, TUNNEL_X]:
+		_team_tunnel(tunnel_x)
+	var top_out = 20.5 + float(UPPER_ROWS) * 0.95
+	var back_length = 26.0 + STAND_INNER_END + top_out + 1.0
+	for side in [-1.0, 1.0]:
+		_box(self, Vector3(side * (STAND_INNER_SIDE + top_out + 0.5), 26.0, 26.0 - back_length * 0.5),
+			Vector3(1.0, 52.0, back_length), dark)
+		_box(self, Vector3(side * (STAND_INNER_SIDE + 20.25), 21.25, 26.0 - (back_length - 24.0) * 0.5),
+			Vector3(0.5, 2.6, back_length - 24.0), dark)
+		_box(self, Vector3(side * (STAND_INNER_SIDE + 37.5), 52.5, 26.0 - back_length * 0.5),
+			Vector3(17.0, 1.0, back_length), dark)
+		var strip_length = 26.0 + STAND_INNER_END + 29.2
+		_box(self, Vector3(side * (STAND_INNER_SIDE + 29.2), 51.85, 26.0 - strip_length * 0.5),
+			Vector3(0.4, 0.3, strip_length), Color("dfe9ff"), true)
+		for light_z in [-15.0, -62.0, -110.0]:
+			var lamp = Vector3(side * (STAND_INNER_SIDE + 29.4), 50.6, light_z)
+			_light_bank(lamp, true)
+			_spotlight(lamp, Vector3(-side * 8.0, 0.0, light_z), Color("dce8ff"))
+	var end_half = STAND_INNER_SIDE + top_out + 1.0
+	_box(self, Vector3(0, 26.0, -(STAND_INNER_END + top_out + 0.5)), Vector3(end_half * 2.0, 52.0, 1.0), dark)
+	_box(self, Vector3(0, 21.25, -(STAND_INNER_END + 20.25)), Vector3((STAND_INNER_SIDE + 20.5) * 2.0, 2.6, 0.5), dark)
+	_box(self, Vector3(0, 52.5, -(STAND_INNER_END + 37.5)), Vector3(end_half * 2.0, 1.0, 17.0), dark)
+	_box(self, Vector3(0, 51.85, -(STAND_INNER_END + 29.2)), Vector3((STAND_INNER_SIDE + 29.4) * 2.0, 0.3, 0.4), Color("dfe9ff"), true)
+	for light_x in [-30.0, 30.0]:
+		var lamp = Vector3(light_x, 50.6, -(STAND_INNER_END + 29.4))
+		_light_bank(lamp, false)
+		_spotlight(lamp, Vector3(light_x * 0.25, 0.0, -95.0), Color("d8e5ff"))
 	_build_jumbotron()
-	for x in [-37.0, 37.0]:
-		_light_bank(Vector3(x, 29, -153), false)
-		_spotlight(Vector3(x, 29.0, -151.0), Vector3(x * 0.15, 0.0, -105.0), Color("d8e5ff"))
-	_build_crowd(seats)
 	for z in [-121.0, 1.0]:
 		var yellow = Color("ffc819")
 		_box(self, Vector3(0, 1.5, z), Vector3(0.35, 3, 0.35), yellow)
@@ -301,128 +454,352 @@ func _build_stadium() -> void:
 			_box(self, Vector3(x, 6.5, z), Vector3(0.17, 7, 0.17), yellow)
 
 
+func _vomitory(front: Vector3, side_stand: bool) -> void:
+	var side = signf(front.x)
+	var size = Vector3(3.6, 2.6, 6.4) if side_stand else Vector3(6.4, 2.6, 3.6)
+	_box(self, Vector3(front.x, 9.2, front.z), size, Color("05070c"))
+	_box(self, Vector3(front.x - side * 1.8, 10.6, front.z), Vector3(0.3, 0.3, 6.8), Color("6c7590"))
+	for edge in [-3.3, 3.3]:
+		_box(self, Vector3(front.x, 9.4, front.z + edge), Vector3(3.6, 3.0, 0.3), Color("3b4256"))
+
+
+func _team_tunnel(tunnel_x: float) -> void:
+	var front = -(STAND_INNER_END - 1.7)
+	var back = -(STAND_INNER_END + 8.6)
+	var center = (front + back) * 0.5
+	var length = front - back
+	var concrete = Color("272d3e")
+	for edge in [-1.0, 1.0]:
+		_box(self, Vector3(tunnel_x + edge * 4.6, 3.65, center), Vector3(1.8, 7.3, length), concrete)
+	_box(self, Vector3(tunnel_x, 6.6, center), Vector3(7.4, 1.4, length), concrete)
+	_box(self, Vector3(tunnel_x, 0.02, center), Vector3(7.4, 0.04, length), Color("1c202b"))
+	_box(self, Vector3(tunnel_x, 2.95, back + 0.2), Vector3(7.4, 5.9, 0.4), Color("27324c"), true)
+	_box(self, Vector3(tunnel_x, 5.82, center), Vector3(0.35, 0.1, length - 0.6), Color("fff1c9"), true)
+
+
 func _build_jumbotron() -> void:
-	var frame = Color("101827")
-	var screen = Color("15374a")
-	var z = -156.0
-	for x in [-8.0, 8.0]:
-		_box(self, Vector3(x, 12.5, z - 1.0), Vector3(1.4, 25.0, 1.4), frame)
-	_box(self, Vector3(0, 30.0, z), Vector3(24.0, 11.0, 1.4), frame)
-	_box(self, Vector3(0, 30.2, z + 0.74), Vector3(22.4, 9.6, 0.08), screen, true)
-	_box(self, Vector3(0, 35.9, z + 0.2), Vector3(24.6, 0.5, 1.6), Color("29d8f2"), true)
-	var lines = [
-		["BLOCK BOWL  •  GAME DAY", 128, 0.014, 32.6, Color("e9f8ff")],
-		["HOME  00  :  00  AWAY", 96, 0.015, 29.6, Color("ffd66b")],
-		["KICKOFF  •  DEFEND YOUR TURF  •  KICKOFF", 56, 0.011, 26.8, Color("66efff")],
-	]
-	for line in lines:
-		var label = Label3D.new()
-		label.text = line[0]
-		label.font_size = line[1]
-		label.pixel_size = line[2]
-		label.modulate = line[4]
-		label.position = Vector3(0, line[3], z + 0.8)
-		add_child(label)
+	var frame = Color("0e1422")
+	var z = -(STAND_INNER_END + 20.5) + 1.2
+	_box(self, Vector3(0, 29.5, z), Vector3(32.0, 13.0, 1.4), frame)
+	_box(self, Vector3(0, 29.5, z + 0.74), Vector3(30.0, 11.0, 0.08), Color("0f2436"), true)
+	_box(self, Vector3(0, 36.25, z + 0.2), Vector3(32.4, 0.5, 1.6), Color("29d8f2"), true)
+	_box(self, Vector3(0, 22.75, z + 0.2), Vector3(32.4, 0.5, 1.6), Color("29d8f2"), true)
+	for x in [-12.0, 12.0]:
+		_box(self, Vector3(x, 44.5, z - 0.6), Vector3(0.25, 16.0, 0.25), Color("1b2130"))
+	jumbo_title = _jumbo_label("BLOCK BOWL", 128, 0.02, Vector3(0, 33.3, z + 0.8), Color("e9f8ff"))
+	jumbo_score = _jumbo_label("HOME 0 - 0 AWAY", 128, 0.022, Vector3(0, 29.4, z + 0.8), Color("ffd66b"))
+	jumbo_clock = _jumbo_label("Q1  3:00", 96, 0.02, Vector3(0, 25.6, z + 0.8), Color("66efff"))
+
+
+func _jumbo_label(text: String, font_size: int, pixel_size: float, position: Vector3, color: Color) -> Label3D:
+	var label = Label3D.new()
+	label.text = text
+	label.font_size = font_size
+	label.pixel_size = pixel_size
+	label.modulate = color
+	label.outline_size = 0
+	label.position = position
+	add_child(label)
+	return label
 
 
 func _light_bank(center: Vector3, side_facing: bool) -> void:
-	_box(self, Vector3(center.x, center.y * 0.5, center.z), Vector3(0.6, center.y, 0.6), Color("171b27"))
-	var frame_size = Vector3(0.6, 3.2, 8.0) if side_facing else Vector3(8.0, 3.2, 0.6)
+	var frame_size = Vector3(0.6, 2.6, 9.0) if side_facing else Vector3(9.0, 2.6, 0.6)
 	_box(self, center, frame_size, Color("202633"))
-	for i in 5:
-		var offset = (float(i) - 2.0) * 1.5
-		var lamp_pos = center + (Vector3(0, 0, offset) if side_facing else Vector3(offset, 0, 0))
-		var lamp_size = Vector3(0.75, 1.2, 1.2) if side_facing else Vector3(1.2, 1.2, 0.75)
-		_box(self, lamp_pos, lamp_size, Color("fff7d5"), true)
+	for i in 6:
+		var offset = (float(i) - 2.5) * 1.45
+		for level in [-0.6, 0.6]:
+			var lamp_pos = center + (Vector3(0, level, offset) if side_facing else Vector3(offset, level, 0))
+			var lamp_size = Vector3(0.75, 0.95, 1.15) if side_facing else Vector3(1.15, 0.95, 0.75)
+			_box(self, lamp_pos, lamp_size, Color("fff7d5"), true)
 
 
 func _spotlight(position: Vector3, target: Vector3, color: Color) -> void:
 	var light = SpotLight3D.new()
 	light.position = position
 	light.light_color = color
-	light.light_energy = 17.0
-	light.spot_range = 112.0
-	light.spot_angle = 68.0
-	light.spot_angle_attenuation = 1.25
+	light.light_energy = 13.0
+	light.spot_range = 150.0
+	light.spot_angle = 62.0
+	light.spot_angle_attenuation = 1.2
 	light.shadow_enabled = false
 	add_child(light)
 	light.look_at(target, Vector3.UP)
 
 
-func _build_crowd(seats: Array) -> void:
+func _build_dressing() -> void:
+	for child in dressing_root.get_children():
+		child.queue_free()
+	clock_labels.clear()
+	var home: Dictionary = game.home
+	var away: Dictionary = game.away
+	var home_color: Color = home["primary"]
+	var away_color: Color = away["primary"]
+	var home_name = ("%s %s" % [home["city"], home["nickname"]]).to_upper()
+	var away_name = ("%s %s" % [away["city"], away["nickname"]]).to_upper()
+	for z in [-5.0, -115.0]:
+		_box(dressing_root, Vector3(0, 0.03, z), Vector3(FIELD_WIDTH, 0.025, 10), home_color.darkened(0.18))
+		var nickname = String(home["nickname"]).to_upper()
+		_flat_label(nickname, Vector3(0, 0.07, z), minf(0.052, 40.0 / (float(nickname.length()) * 80.0)), Color("f4f4ee"), 0.0)
+	var logo = _box(dressing_root, Vector3(0, 0.035, -60), Vector3(7.5, 0.02, 7.5), home_color)
+	logo.rotation.y = PI / 4.0
+	_box(dressing_root, Vector3(0, 0.04, -60), Vector3(6.3, 0.02, 6.3), home_color.darkened(0.3)).rotation.y = PI / 4.0
+	_flat_label(home["abbr"], Vector3(0, 0.075, -60), 0.028, home["secondary"].lightened(0.2), 0.0)
+	var wall = Color("121827")
+	var cap = Color("4c566f")
+	var wall_length = 26.0 + STAND_INNER_END
+	for side in [-1.0, 1.0]:
+		_box(dressing_root, Vector3(side * (STAND_INNER_SIDE - 0.85), 1.3, 26.0 - wall_length * 0.5),
+			Vector3(1.7, 2.6, wall_length), wall)
+		_box(dressing_root, Vector3(side * (STAND_INNER_SIDE - 0.85), 2.66, 26.0 - wall_length * 0.5),
+			Vector3(1.8, 0.12, wall_length), cap)
+		var yaw = -side * PI / 2.0
+		for i in 15:
+			var z = 21.2 - float(i) * 9.6
+			var center = Vector3(side * (STAND_INNER_SIDE - 1.73), 1.3, z)
+			if i == 3 or i == 8 or i == 13:
+				clock_labels.append(_ad_panel(center, 9.0, 1.9, yaw, Color("05070b"), "Q1  3:00", Color("ffb627")))
+			elif i % 4 == 0:
+				_ad_panel(center, 9.0, 1.9, yaw, home_color.darkened(0.25), home_name, Color("f6f6f6"))
+			elif i % 4 == 2:
+				_ad_panel(center, 9.0, 1.9, yaw, away_color.darkened(0.25), away_name, Color("f6f6f6"))
+			else:
+				var ad = (i + int(side + 1.0)) % ADS.size()
+				_ad_panel(center, 9.0, 1.9, yaw, AD_COLORS[ad % AD_COLORS.size()].darkened(0.2), ADS[ad], Color("fff8e6"))
+		var ribbon_length = 26.0 + STAND_INNER_END + 20.5
+		var ribbon_x = side * (STAND_INNER_SIDE + 19.98)
+		_box(dressing_root, Vector3(ribbon_x, 21.25, 26.0 - ribbon_length * 0.5),
+			Vector3(0.06, 2.1, ribbon_length), home_color.darkened(0.55), true)
+		for i in 6:
+			var z = 12.0 - float(i) * 27.0
+			var text = home_name if i % 2 == 0 else ADS[(i * 3 + int(side + 1.0)) % ADS.size()]
+			_panel_label(Vector3(ribbon_x - side * 0.05, 21.25, z), text, 1.5, 22.0, yaw, Color("dff6ff"))
+	var end_z = -(STAND_INNER_END - 0.85)
+	var segments = [
+		[-STAND_INNER_SIDE, -TUNNEL_X - 4.6], [-TUNNEL_X + 4.6, TUNNEL_X - 4.6], [TUNNEL_X + 4.6, STAND_INNER_SIDE],
+	]
+	for segment in segments:
+		var width = segment[1] - segment[0]
+		var mid = (segment[0] + segment[1]) * 0.5
+		_box(dressing_root, Vector3(mid, 1.3, end_z), Vector3(width, 2.6, 1.7), wall)
+		_box(dressing_root, Vector3(mid, 2.66, end_z), Vector3(width, 0.12, 1.8), cap)
+	var end_front = -(STAND_INNER_END - 1.73)
+	_ad_panel(Vector3(-11.0, 1.3, end_front), 19.0, 1.9, 0.0, home_color.darkened(0.25), home_name, Color("f6f6f6"))
+	clock_labels.append(_ad_panel(Vector3(0, 1.3, end_front + 0.01), 3.2, 1.9, 0.0, Color("05070b"), "Q1  3:00", Color("ffb627")))
+	_ad_panel(Vector3(11.0, 1.3, end_front), 19.0, 1.9, 0.0, AD_COLORS[0].darkened(0.2), ADS[0], Color("fff8e6"))
+	for x in [-34.8, 34.8]:
+		_ad_panel(Vector3(x, 1.3, end_front), 7.0, 1.9, 0.0, AD_COLORS[2].darkened(0.2), ADS[3], Color("fff8e6"))
+	var end_ribbon_z = -(STAND_INNER_END + 19.98)
+	_box(dressing_root, Vector3(0, 21.25, end_ribbon_z), Vector3((STAND_INNER_SIDE + 20.5) * 2.0, 2.1, 0.06),
+		home_color.darkened(0.55), true)
+	for x in [-38.0, 38.0]:
+		_panel_label(Vector3(x, 21.25, end_ribbon_z + 0.05), home_name, 1.5, 34.0, 0.0, Color("dff6ff"))
+	for tunnel in [[-TUNNEL_X, home], [TUNNEL_X, away]]:
+		var tunnel_x: float = tunnel[0]
+		var team: Dictionary = tunnel[1]
+		var color: Color = team["primary"]
+		for edge in [-1.0, 1.0]:
+			_box(dressing_root, Vector3(tunnel_x + edge * 4.15, 3.3, end_front + 0.1), Vector3(0.9, 6.6, 0.5), color)
+		_box(dressing_root, Vector3(tunnel_x, 7.0, end_front + 0.1), Vector3(9.2, 1.4, 0.5), color.darkened(0.15))
+		_panel_label(Vector3(tunnel_x, 7.0, end_front + 0.37), String(team["nickname"]).to_upper(), 1.0, 8.4, 0.0, team["secondary"].lightened(0.35))
+		_box(dressing_root, Vector3(tunnel_x, 6.2, end_front + 0.36), Vector3(8.0, 0.12, 0.08), Color("fff3c8"), true)
+	_build_crowd(home, away)
+
+
+func _flat_label(text: String, position: Vector3, pixel_size: float, color: Color, yaw: float) -> Label3D:
+	var label = Label3D.new()
+	label.text = text
+	label.font_size = 128
+	label.pixel_size = pixel_size
+	label.modulate = color
+	label.outline_size = 0
+	label.shaded = true
+	label.double_sided = false
+	label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	label.transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -PI / 2.0), position)
+	dressing_root.add_child(label)
+	return label
+
+
+func _panel_label(position: Vector3, text: String, height: float, width: float, yaw: float, color: Color) -> Label3D:
+	var label = Label3D.new()
+	label.text = text
+	label.font_size = 96
+	label.pixel_size = minf(height * 0.6 / 96.0, width * 0.9 / (maxf(float(text.length()), 1.0) * 96.0 * 0.62))
+	label.modulate = color
+	label.outline_size = 0
+	label.position = position
+	label.rotation.y = yaw
+	dressing_root.add_child(label)
+	return label
+
+
+func _ad_panel(center: Vector3, width: float, height: float, yaw: float, color: Color, text: String, text_color: Color) -> Label3D:
+	var panel = _box(dressing_root, center, Vector3(width, height, 0.06), color, true)
+	panel.rotation.y = yaw
+	return _panel_label(center + Basis(Vector3.UP, yaw) * Vector3(0, 0, 0.05), text, height, width, yaw, text_color)
+
+
+func _update_displays() -> void:
+	var seconds = maxi(0, int(ceil(game.clock)))
+	var clock_text = "Q%d  %d:%02d" % [game.quarter, int(seconds / 60), seconds % 60]
+	var score_text = "%s %d - %d %s" % [game.home["abbr"], game.home_score, game.away_score, game.away["abbr"]]
+	if clock_text == last_clock_text and score_text == jumbo_score.text:
+		return
+	last_clock_text = clock_text
+	for label in clock_labels:
+		label.text = clock_text
+	jumbo_clock.text = clock_text
+	jumbo_score.text = score_text
+	jumbo_title.text = String(game.home["nickname"]).to_upper()
+
+
+func _crowd_color_index(seat: Dictionary) -> int:
+	var pick: float = seat["pick"]
+	if pick < 0.36:
+		return CROWD_COLORS.size()
+	if pick < 0.46:
+		return CROWD_COLORS.size() + 1
+	if pick < 0.54:
+		return CROWD_COLORS.size() + 2
+	if pick < 0.64:
+		return CROWD_COLORS.size() + 3
+	return seat["palette"]
+
+
+func _build_crowd(home: Dictionary, away: Dictionary) -> void:
+	var colors: Array = CROWD_COLORS.duplicate()
+	colors.append_array([home["primary"], home["secondary"], Color("eef0f2"), away["primary"]])
 	var close_seats: Array = []
 	var medium_seats: Array = []
 	var far_groups: Array = []
-	for unused in CROWD_COLORS.size():
+	for unused in colors.size():
 		far_groups.append([])
-	for seat in seats:
+	for seat in stand_seats:
+		if seat["empty"]:
+			continue
 		if seat["row"] < 4:
 			close_seats.append(seat)
-		elif seat["row"] < 15:
+		elif seat["row"] < 14:
 			medium_seats.append(seat)
 		else:
-			far_groups[seat["palette"]].append(seat)
-	_add_crowd_part(close_seats, Vector3(0.44, 0.58, 0.28), Vector3(0, 0.88, 0), "shirt")
-	_add_crowd_part(close_seats, Vector3(0.3, 0.32, 0.28), Vector3(0, 1.36, 0), "skin")
-	_add_crowd_part(close_seats, Vector3(0.74, 0.16, 0.27), Vector3(0, 1.08, 0), "shirt")
-	_add_crowd_part(close_seats, Vector3(0.19, 0.43, 0.24), Vector3(-0.12, 0.35, 0), "pants")
-	_add_crowd_part(close_seats, Vector3(0.19, 0.43, 0.24), Vector3(0.12, 0.35, 0), "pants")
-	_add_crowd_part(close_seats, Vector3(0.22, 0.1, 0.3), Vector3(-0.12, 0.08, -0.035), "shoe")
-	_add_crowd_part(close_seats, Vector3(0.22, 0.1, 0.3), Vector3(0.12, 0.08, -0.035), "shoe")
-	_add_crowd_part(medium_seats, Vector3(0.42, 0.54, 0.26), Vector3(0, 0.84, 0), "shirt")
-	_add_crowd_part(medium_seats, Vector3(0.28, 0.3, 0.26), Vector3(0, 1.3, 0), "skin")
-	_add_crowd_part(medium_seats, Vector3(0.4, 0.48, 0.24), Vector3(0, 0.34, 0), "pants")
-	for palette in far_groups.size():
-		_add_crowd_billboards(far_groups[palette], palette)
+			far_groups[_crowd_color_index(seat)].append(seat)
+	_add_crowd_people(close_seats, true, colors, home["secondary"])
+	_add_crowd_people(medium_seats, false, colors, home["secondary"])
+	for index in far_groups.size():
+		_add_crowd_billboards(far_groups[index], colors[index])
 
 
 func _crowd_brightness(position: Vector3) -> float:
 	var outside_x = maxf(absf(position.x) - FIELD_WIDTH / 2.0, 0.0)
 	var outside_z = maxf(absf(position.z + 60.0) - 60.0, 0.0)
 	var stand_distance = Vector2(outside_x, outside_z).length()
-	var fade = clampf((stand_distance - 5.0) / 55.0, 0.0, 0.58)
-	fade += clampf(position.y / 45.0, 0.0, 0.24)
+	var fade = clampf((stand_distance - 8.0) / 60.0, 0.0, 0.5)
+	fade += clampf(position.y / 55.0, 0.0, 0.22)
 	return 1.0 - fade
 
 
-func _add_crowd_part(seats: Array, size: Vector3, offset: Vector3, color_key: String) -> void:
+func _person_parts(seat: Dictionary, shirt: Color, detailed: bool, accent: Color) -> Array:
+	var skin: Color = seat["skin"]
+	var hair: Color = seat["hair"]
+	var pick: float = seat["pick"]
+	var pants = Color("2b3550") if pick > 0.5 else shirt.darkened(0.7)
+	var style: int = seat["style"]
+	var pose: int = seat["pose"]
+	var hidden = [Vector3.ZERO, Vector3.ZERO, shirt]
+	var up = [pose == 1 or pose == 3, pose == 2 or pose == 3]
+	var parts: Array = []
+	parts.append([Vector3(0.46, 0.66, 0.24), Vector3(0, 1.01, 0), shirt])
+	parts.append([Vector3(0.44, 0.44, 0.44), Vector3(0, 1.57, 0), skin])
+	if style == 2:
+		parts.append([Vector3(0.47, 0.13, 0.47), Vector3(0, 1.82, 0), shirt])
+	elif style == 3:
+		parts.append([Vector3(0.45, 0.05, 0.45), Vector3(0, 1.8, 0), hair])
+	else:
+		parts.append([Vector3(0.47, 0.11, 0.47), Vector3(0, 1.81, 0), hair])
+	if not detailed:
+		parts.append([Vector3(0.44, 0.68, 0.24), Vector3(0, 0.34, 0), pants])
+		for i in 2:
+			var side = -1.0 if i == 0 else 1.0
+			var y = 1.67 if up[i] else 1.01
+			parts.append([Vector3(0.22, 0.66, 0.22), Vector3(side * 0.34, y, 0), shirt])
+		return parts
+	if style == 0 or style == 1:
+		var back_height = 0.3 if style == 0 else 0.46
+		parts.append([Vector3(0.47, back_height, 0.06), Vector3(0, 1.79 - back_height * 0.5, 0.215), hair])
+	else:
+		parts.append(hidden)
+	if style == 2:
+		parts.append([Vector3(0.4, 0.04, 0.16), Vector3(0, 1.77, -0.29), shirt.darkened(0.25)])
+	else:
+		parts.append(hidden)
+	for side in [-1.0, 1.0]:
+		parts.append([Vector3(0.1, 0.07, 0.02), Vector3(side * 0.1, 1.6, -0.225), Color("f4f4f4")])
+	for side in [-1.0, 1.0]:
+		parts.append([Vector3(0.05, 0.07, 0.03), Vector3(side * 0.075, 1.6, -0.228), Color("1f2033")])
+	parts.append([Vector3(0.16, 0.035, 0.02), Vector3(0, 1.46, -0.225), Color("6b3a32")])
+	if pick < 0.6:
+		parts.append([Vector3(0.465, 0.08, 0.245), Vector3(0, 1.16, 0), shirt.lightened(0.45)])
+	else:
+		parts.append(hidden)
+	for i in 2:
+		var side = -1.0 if i == 0 else 1.0
+		var sleeve_y = 1.49 if up[i] else 1.19
+		var forearm_y = 1.82 if up[i] else 0.86
+		parts.append([Vector3(0.22, 0.3, 0.22), Vector3(side * 0.34, sleeve_y, 0), shirt])
+		parts.append([Vector3(0.21, 0.36, 0.21), Vector3(side * 0.34, forearm_y, 0), skin])
+	for side in [-1.0, 1.0]:
+		parts.append([Vector3(0.22, 0.6, 0.23), Vector3(side * 0.11, 0.38, 0), pants])
+	for side in [-1.0, 1.0]:
+		parts.append([Vector3(0.23, 0.1, 0.28), Vector3(side * 0.11, 0.05, -0.025), Color("15161c")])
+	if seat["finger"] and up[1]:
+		parts.append([Vector3(0.18, 0.42, 0.08), Vector3(0.34, 2.2, 0), accent])
+	else:
+		parts.append(hidden)
+	return parts
+
+
+func _add_crowd_people(seats: Array, detailed: bool, colors: Array, accent: Color) -> void:
 	if seats.is_empty():
 		return
 	var mesh = BoxMesh.new()
 	mesh.size = Vector3.ONE
-	var multimesh = MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.use_colors = true
-	multimesh.mesh = mesh
-	multimesh.instance_count = seats.size()
+	var part_count = 20 if detailed else 6
+	var multimeshes: Array = []
+	for j in part_count:
+		var multimesh = MultiMesh.new()
+		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.use_colors = true
+		multimesh.use_custom_data = true
+		multimesh.mesh = mesh
+		multimesh.instance_count = seats.size()
+		multimeshes.append(multimesh)
+		var crowd = MultiMeshInstance3D.new()
+		crowd.multimesh = multimesh
+		crowd.material_override = crowd_material
+		crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		dressing_root.add_child(crowd)
 	for i in seats.size():
 		var seat: Dictionary = seats[i]
 		var seat_position: Vector3 = seat["pos"]
-		multimesh.set_instance_transform(
-			i, Transform3D(Basis().scaled(size), seat_position + offset))
-		var color: Color
-		match color_key:
-			"skin": color = seat["skin"]
-			"pants": color = seat["color"].darkened(0.7)
-			"shoe": color = Color("10121a")
-			_: color = seat["color"]
-		multimesh.set_instance_color(i, color * _crowd_brightness(seat_position))
-	var material = StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 1.0
-	var crowd = MultiMeshInstance3D.new()
-	crowd.multimesh = multimesh
-	crowd.material_override = material
-	crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(crowd)
+		var basis = Basis(Vector3.UP, seat["yaw"])
+		var brightness = _crowd_brightness(seat_position)
+		var custom = Color(seat["phase"], seat["jump"], 0.0, 0.0)
+		var parts = _person_parts(seat, colors[_crowd_color_index(seat)], detailed, accent)
+		for j in part_count:
+			var part: Array = parts[j]
+			var multimesh: MultiMesh = multimeshes[j]
+			var color: Color = part[2]
+			multimesh.set_instance_transform(i, Transform3D(basis * Basis().scaled(part[0]), seat_position + basis * part[1]))
+			multimesh.set_instance_color(i, Color(color.r * brightness, color.g * brightness, color.b * brightness))
+			multimesh.set_instance_custom_data(i, custom)
 
 
-func _add_crowd_billboards(seats: Array, palette: int) -> void:
+func _add_crowd_billboards(seats: Array, shirt: Color) -> void:
 	if seats.is_empty():
 		return
 	var image = Image.create(12, 24, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
-	var shirt: Color = CROWD_COLORS[palette]
 	var skin = Color("e2ad87")
 	var pants = Color("596071")
 	var dark = Color("222a37")
@@ -440,14 +817,14 @@ func _add_crowd_billboards(seats: Array, palette: int) -> void:
 	image.fill_rect(Rect2i(7, 20, 2, 2), dark)
 	var texture = ImageTexture.create_from_image(image)
 	var mesh = QuadMesh.new()
-	mesh.size = Vector2(0.75, 1.5)
+	mesh.size = Vector2(0.85, 1.7)
 	var material = StandardMaterial3D.new()
 	material.albedo_texture = texture
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	material.vertex_color_use_as_albedo = true
 	mesh.material = material
 	var multimesh = MultiMesh.new()
@@ -458,13 +835,13 @@ func _add_crowd_billboards(seats: Array, palette: int) -> void:
 	for i in seats.size():
 		var seat: Dictionary = seats[i]
 		var seat_position: Vector3 = seat["pos"]
-		multimesh.set_instance_transform(i, Transform3D(Basis(), seat_position + Vector3(0, 0.76, 0)))
-		var brightness = _crowd_brightness(seat_position)
+		multimesh.set_instance_transform(i, Transform3D(Basis(), seat_position + Vector3(0, 0.86, 0)))
+		var brightness = _crowd_brightness(seat_position) * 0.82
 		multimesh.set_instance_color(i, Color(brightness, brightness, brightness))
 	var crowd = MultiMeshInstance3D.new()
 	crowd.multimesh = multimesh
 	crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(crowd)
+	dressing_root.add_child(crowd)
 
 
 func _build_sideline(team: Dictionary, side: float) -> void:
@@ -506,7 +883,8 @@ func _build_sideline(team: Dictionary, side: float) -> void:
 func _build_sideline_multimeshes(
 	team: Dictionary, side: float, members: Array, coaches: bool
 ) -> void:
-	var pants: Color = Color("111825") if coaches else team["primary"].darkened(0.62)
+	var jersey: Color = Color("eef0f2") if side > 0.0 else team["primary"]
+	var pants: Color = Color("111825") if coaches else (Color("d5d9e0") if side > 0.0 else team["primary"].darkened(0.62))
 	var parts: Array
 	if coaches:
 		parts = [
@@ -521,14 +899,14 @@ func _build_sideline_multimeshes(
 		]
 	else:
 		parts = [
-			{"size": Vector3(0.62, 0.72, 0.38), "offset": Vector3(0, 1.04, 0), "color": team["primary"]},
-			{"size": Vector3(0.82, 0.18, 0.44), "offset": Vector3(0, 1.43, 0), "color": team["primary"]},
+			{"size": Vector3(0.62, 0.72, 0.38), "offset": Vector3(0, 1.04, 0), "color": jersey},
+			{"size": Vector3(0.82, 0.18, 0.44), "offset": Vector3(0, 1.43, 0), "color": jersey},
 			{"size": Vector3(0.52, 0.16, 0.34), "offset": Vector3(0, 0.68, 0), "color": pants},
 			{"size": Vector3(0.38, 0.38, 0.38), "offset": Vector3(0, 1.78, 0), "color": "skin"},
-			{"size": Vector3(0.46, 0.37, 0.44), "offset": Vector3(0, 1.81, 0), "color": team["primary"]},
+			{"size": Vector3(0.46, 0.37, 0.44), "offset": Vector3(0, 1.81, 0), "color": jersey},
 			{"size": Vector3(0.08, 0.025, 0.43), "offset": Vector3(0, 2.01, 0), "color": team["secondary"]},
-			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(-0.43, 1.11, 0), "color": team["primary"], "arm": -1},
-			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(0.43, 1.11, 0), "color": team["primary"], "arm": 1},
+			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(-0.43, 1.11, 0), "color": jersey, "arm": -1},
+			{"size": Vector3(0.2, 0.52, 0.23), "offset": Vector3(0.43, 1.11, 0), "color": jersey, "arm": 1},
 			{"size": Vector3(0.24, 0.54, 0.25), "offset": Vector3(-0.17, 0.34, 0), "color": pants},
 			{"size": Vector3(0.24, 0.54, 0.25), "offset": Vector3(0.17, 0.34, 0), "color": pants},
 			{"size": Vector3(0.26, 0.13, 0.34), "offset": Vector3(-0.17, 0.08, -0.05), "color": Color("10121a")},
@@ -599,46 +977,58 @@ func _update_sidelines() -> void:
 				multimesh.set_instance_transform(i, transform)
 
 
-func _make_player(p: Dictionary, team: Dictionary) -> Dictionary:
+func _make_player(p: Dictionary, team: Dictionary, away: bool) -> Dictionary:
 	var root = Node3D.new()
 	player_root.add_child(root)
 	var primary: Color = team["primary"]
 	var secondary: Color = team["secondary"]
-	var pants = primary.darkened(0.62)
+	var jersey = Color("eef0f2") if away else primary
+	var pants = Color("d5d9e0") if away else primary.darkened(0.62)
+	var trim = primary if away else secondary
+	var helmet = primary.darkened(0.2) if away else primary
+	var mask = Color("c9ced8")
 	var skin: Color = SKIN_COLORS[p["id"] % SKIN_COLORS.size()]
-	_box(root, Vector3(0, 1.31, 0), Vector3(0.72, 0.55, 0.44), primary)
-	_box(root, Vector3(0, 1.58, 0), Vector3(1.0, 0.24, 0.54), primary)
+	_box(root, Vector3(0, 1.31, 0), Vector3(0.72, 0.55, 0.44), jersey)
+	_box(root, Vector3(0, 1.58, 0), Vector3(1.0, 0.24, 0.54), jersey)
+	_box(root, Vector3(0, 1.58, 0), Vector3(1.02, 0.06, 0.2), trim)
 	_box(root, Vector3(0, 1.04, 0), Vector3(0.68, 0.18, 0.4), pants)
-	_box(root, Vector3(0, 1.94, 0), Vector3(0.48, 0.45, 0.49), primary)
-	_box(root, Vector3(0, 2.18, 0), Vector3(0.1, 0.035, 0.51), secondary)
-	_box(root, Vector3(0, 1.86, -0.25), Vector3(0.34, 0.22, 0.035), skin)
-	_box(root, Vector3(0, 1.8, -0.30), Vector3(0.4, 0.045, 0.08), Color("d7dce5"))
+	_box(root, Vector3(0, 1.94, 0), Vector3(0.5, 0.46, 0.52), helmet)
+	_box(root, Vector3(0, 2.18, 0), Vector3(0.1, 0.035, 0.53), trim)
+	_box(root, Vector3(0, 1.88, -0.25), Vector3(0.34, 0.24, 0.035), skin)
+	_box(root, Vector3(0, 1.8, -0.3), Vector3(0.42, 0.04, 0.07), mask)
+	_box(root, Vector3(0, 1.9, -0.3), Vector3(0.42, 0.04, 0.07), mask)
+	for x in [-0.11, 0.11]:
+		_box(root, Vector3(x, 1.85, -0.3), Vector3(0.04, 0.16, 0.07), mask)
 	var limbs = {}
 	for side in [-1, 1]:
 		var side_name = "left" if side < 0 else "right"
 		var arm = Node3D.new()
 		arm.position = Vector3(side * 0.47, 1.55, 0)
 		root.add_child(arm)
-		_box(arm, Vector3(0, -0.17, 0), Vector3(0.22, 0.35, 0.24), primary)
-		_box(arm, Vector3(0, -0.47, 0), Vector3(0.2, 0.3, 0.2), skin)
+		_box(arm, Vector3(0, -0.17, 0), Vector3(0.22, 0.35, 0.24), jersey)
+		_box(arm, Vector3(0, -0.3, 0), Vector3(0.23, 0.06, 0.25), trim)
+		_box(arm, Vector3(0, -0.45, 0), Vector3(0.2, 0.26, 0.2), skin)
+		_box(arm, Vector3(0, -0.63, 0), Vector3(0.22, 0.12, 0.22), Color("16181f"))
 		limbs[side_name + "_arm"] = arm
 		var leg = Node3D.new()
 		leg.position = Vector3(side * 0.17, 0.96, 0)
 		root.add_child(leg)
 		_box(leg, Vector3(0, -0.23, 0), Vector3(0.27, 0.46, 0.29), pants)
-		_box(leg, Vector3(0, -0.66, 0), Vector3(0.24, 0.4, 0.24), secondary)
+		_box(leg, Vector3(0, -0.66, 0), Vector3(0.24, 0.4, 0.24), trim if not away else jersey)
 		_box(leg, Vector3(0, -0.91, -0.06), Vector3(0.28, 0.13, 0.38), Color("10121a"))
 		limbs[side_name + "_leg"] = leg
-	var number = Label3D.new()
-	number.text = str(p["number"])
-	number.font_size = 64
-	number.pixel_size = 0.006
-	number.outline_size = 8
-	number.modulate = secondary
-	number.outline_modulate = pants
-	number.position = Vector3(0, 1.34, 0.235)
-	number.no_depth_test = false
-	root.add_child(number)
+	for facing in [0.0, PI]:
+		var number = Label3D.new()
+		number.text = str(p["number"])
+		number.font_size = 64
+		number.pixel_size = 0.0062
+		number.outline_size = 8
+		number.modulate = trim
+		number.outline_modulate = jersey.darkened(0.5) if not away else Color("1a1d26")
+		number.position = Vector3(0, 1.34, 0.235 if facing == 0.0 else -0.235)
+		number.rotation.y = facing
+		number.no_depth_test = false
+		root.add_child(number)
 	var marker = MeshInstance3D.new()
 	var ring = TorusMesh.new()
 	ring.inner_radius = 0.5

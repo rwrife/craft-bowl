@@ -347,31 +347,22 @@ func _build_game() -> void:
 	var score = HBoxContainer.new()
 	score.add_theme_constant_override("separation", 0)
 	layer.add_child(score)
-	score.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	score.offset_left = -228
-	score.offset_right = 228
-	score.offset_top = 10
-	score.offset_bottom = 58
-	_add_score_cell(score, app.game.home["abbr"], 82, app.game.home["primary"], 20)
-	score_home = _add_score_cell(score, "0", 70, Color("121827"), 26)
-	score_clock = _add_score_cell(score, "Q1\n3:00", 92, Color("090b10"), 17)
-	score_away = _add_score_cell(score, "0", 70, Color("121827"), 26)
-	_add_score_cell(score, app.game.away["abbr"], 82, app.game.away["primary"], 20)
+	score.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	score.offset_left = -290
+	score.offset_right = 290
+	score.offset_top = -60
+	score.offset_bottom = -12
+	_add_score_cell(score, app.game.home["abbr"], 72, app.game.home["primary"], 20)
+	score_home = _add_score_cell(score, "0", 52, app.game.home["primary"].darkened(0.4), 24)
+	_add_score_cell(score, app.game.away["abbr"], 72, app.game.away["primary"], 20)
+	score_away = _add_score_cell(score, "0", 52, app.game.away["primary"].darkened(0.4), 24)
+	score_clock = _add_score_cell(score, "1st  3:00", 142, Color("16181f"), 19)
+	down_label = _add_score_cell(score, "", 190, Color("a51f2a"), 17)
 	var menu = _button("MENU", Color(0, 0, 0, 0.8), Vector2(80, 38))
 	menu.add_theme_font_size_override("font_size", 15)
 	menu.pressed.connect(app.return_to_title)
 	layer.add_child(menu)
 	menu.position = Vector2(18, 12)
-	var down_panel = PanelContainer.new()
-	down_panel.add_theme_stylebox_override("panel", _style(Color(0.03, 0.05, 0.1, 0.88), Color(0, 0, 0, 0), 0))
-	layer.add_child(down_panel)
-	down_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	down_panel.offset_left = -205
-	down_panel.offset_right = -20
-	down_panel.offset_top = 10
-	down_panel.offset_bottom = 70
-	down_label = _label("", 19, Color("ffdb25"))
-	down_panel.add_child(down_label)
 	message_label = _label("", 30, Color("ffdc2b"))
 	layer.add_child(message_label)
 	message_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -386,8 +377,8 @@ func _build_game() -> void:
 	meters.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	meters.offset_left = -190
 	meters.offset_right = 190
-	meters.offset_top = -45
-	meters.offset_bottom = -13
+	meters.offset_top = -100
+	meters.offset_bottom = -68
 	meters.add_child(_label("TURBO", 14, Color("ffda24")))
 	turbo_bar = _meter(Color("ffcf16"))
 	meters.add_child(turbo_bar)
@@ -401,8 +392,8 @@ func _build_game() -> void:
 	cards.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	cards.offset_left = -295
 	cards.offset_right = 295
-	cards.offset_top = -235
-	cards.offset_bottom = -52
+	cards.offset_top = -290
+	cards.offset_bottom = -107
 	modal = Control.new()
 	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_full(modal)
@@ -435,12 +426,13 @@ func refresh_game() -> void:
 	score_home.text = str(game.home_score)
 	score_away.text = str(game.away_score)
 	var seconds = maxi(0, int(ceil(game.clock)))
-	score_clock.text = "Q%d\n%d:%02d" % [game.quarter, int(seconds / 60), seconds % 60]
-	var ordinal = ["1ST", "2ND", "3RD", "4TH"][clampi(game.down - 1, 0, 3)]
-	var distance = "GOAL" if game.first_down >= Simulation.GOAL_LINE else str(maxi(1, int(round(game.first_down - game.los))))
+	var quarter_name = ["1st", "2nd", "3rd", "4th"][clampi(game.quarter - 1, 0, 3)] if game.quarter <= 4 else "OT"
+	score_clock.text = "%s  %d:%02d" % [quarter_name, int(seconds / 60), seconds % 60]
+	var ordinal = ["1st", "2nd", "3rd", "4th"][clampi(game.down - 1, 0, 3)]
+	var distance = "Goal" if game.first_down >= Simulation.GOAL_LINE else str(maxi(1, int(round(game.first_down - game.los))))
 	var yard = int(round(game.los - Simulation.OWN_GOAL))
-	var spot = "MIDFIELD" if yard == 50 else ("OWN %d" % yard if yard < 50 else "OPP %d" % (100 - yard))
-	down_label.text = "%s & %s\n%s" % [ordinal, distance, spot]
+	var spot = "MID" if yard == 50 else ("OWN %d" % yard if yard < 50 else "OPP %d" % (100 - yard))
+	down_label.text = "%s & %s  •  %s" % [ordinal, distance, spot]
 	message_label.text = game.message if game.message != "SELECT PLAY" else ""
 	if game.drive_runner != null:
 		message_label.text = "OPPONENT DRIVE..."
