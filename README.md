@@ -29,7 +29,7 @@ If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEV
 The Godot 4.4.1 project at the repository root is a cross-platform runtime for the game. It reuses the
 shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
 simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
-stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights, bloom,
+stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights with fake volumetric light shafts, height fog, drifting haze motes, low mist, warm accent lights, a screen vignette, bloom,
 subtle translucent turbo trails, turf kick-up on tackles, and touchdown confetti, pyro jets, and fireworks over the bowl.
 The title logo slams onto the screen with squash, camera shake, a flash, block dust, and a thud.
 Surfaces use pixel-noise block textures, and ad boards use pixelated lettering. Its stacked bowl has a 52-row double deck

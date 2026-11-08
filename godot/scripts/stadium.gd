@@ -25,6 +25,58 @@ const LOWER_ROWS = 26
 const UPPER_ROWS = 26
 const SEAT_PITCH = 0.95
 const TUNNEL_X = 26.0
+const SHAFT_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 tint : source_color = vec4(0.75, 0.82, 1.0, 1.0);
+uniform float strength = 0.11;
+varying float along;
+void vertex() {
+	along = clamp(0.5 - VERTEX.y / max(1.0, 0.0001), 0.0, 1.0);
+}
+void fragment() {
+	float edge = pow(abs(dot(normalize(NORMAL), normalize(VIEW))), 1.6);
+	float fade = smoothstep(0.0, 0.18, along) * (1.0 - smoothstep(0.55, 1.0, along));
+	float shimmer = 0.85 + 0.15 * sin(TIME * 0.7 + along * 9.0);
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(strength * edge * fade * shimmer, 0.0, 1.0);
+}
+"""
+const MIST_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 tint : source_color = vec4(0.42, 0.5, 0.66, 1.0);
+uniform float strength = 0.16;
+varying float seed;
+void vertex() {
+	seed = INSTANCE_CUSTOM.x;
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void fragment() {
+	vec2 uv = UV - 0.5;
+	float radial = 1.0 - smoothstep(0.12, 0.5, length(uv));
+	vec2 drift = UV * 3.0 + vec2(TIME * 0.025, TIME * 0.012) + vec2(seed * 13.0);
+	float wisps = noise(drift) * 0.65 + noise(drift * 2.3) * 0.35;
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(strength * radial * (0.35 + wisps), 0.0, 1.0);
+}
+"""
+const VIGNETTE_SHADER = """
+shader_type canvas_item;
+void fragment() {
+	vec2 uv = UV - 0.5;
+	uv.x *= 1.2;
+	float shade = smoothstep(0.3, 0.82, length(uv));
+	float top = smoothstep(-0.2, -0.5, uv.y) * 0.25;
+	COLOR = vec4(0.004, 0.007, 0.02, clamp(shade * 0.7 + top, 0.0, 0.85));
+}
+"""
 const CROWD_SHADER = """
 shader_type spatial;
 render_mode world_vertex_coords;
@@ -78,6 +130,9 @@ var jumbo_score: Label3D
 var jumbo_clock: Label3D
 var last_clock_text = ""
 var crowd_material: ShaderMaterial
+var shaft_material: ShaderMaterial
+var mist_material: ShaderMaterial
+var mist_root: Node3D
 var excitement = 0.0
 var down_marker: Node3D
 var down_marker_label: Label3D
@@ -90,6 +145,16 @@ func _ready() -> void:
 	crowd_material.shader = shader
 	dressing_root = Node3D.new()
 	add_child(dressing_root)
+	shaft_material = ShaderMaterial.new()
+	var shaft_shader = Shader.new()
+	shaft_shader.code = SHAFT_SHADER
+	shaft_material.shader = shaft_shader
+	shaft_material.render_priority = 2
+	mist_material = ShaderMaterial.new()
+	var mist_shader = Shader.new()
+	mist_shader.code = MIST_SHADER
+	mist_material.shader = mist_shader
+	mist_material.render_priority = 1
 	_build_environment()
 	_build_field()
 	_build_stadium()
@@ -105,6 +170,7 @@ func _ready() -> void:
 	camera.near = 0.2
 	camera.far = 400.0
 	add_child(camera)
+	_build_atmosphere()
 
 
 func set_game(simulation) -> void:
@@ -288,10 +354,15 @@ func _build_environment() -> void:
 	world.glow_bloom = 0.18
 	world.glow_hdr_threshold = 0.72
 	world.fog_enabled = true
-	world.fog_light_color = Color("111a2b")
-	world.fog_light_energy = 0.32
-	world.fog_density = 0.009
-	world.fog_sky_affect = 0.15
+	world.fog_light_color = Color("16223a")
+	world.fog_light_energy = 0.42
+	world.fog_density = 0.0125
+	world.fog_sky_affect = 0.25
+	world.fog_height = 9.0
+	world.fog_height_density = 0.022
+	world.adjustment_enabled = true
+	world.adjustment_contrast = 1.12
+	world.adjustment_saturation = 1.08
 	environment.environment = world
 	add_child(environment)
 	key_light = DirectionalLight3D.new()
@@ -684,7 +755,130 @@ func _light_bank(center: Vector3, side_facing: bool) -> void:
 			_box(self, lamp_pos, lamp_size, Color("fff7d5"), true)
 
 
+func _build_atmosphere() -> void:
+	var vignette_layer = CanvasLayer.new()
+	vignette_layer.layer = -1
+	add_child(vignette_layer)
+	var vignette = ColorRect.new()
+	vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vignette_material = ShaderMaterial.new()
+	var vignette_shader = Shader.new()
+	vignette_shader.code = VIGNETTE_SHADER
+	vignette_material.shader = vignette_shader
+	vignette.material = vignette_material
+	vignette_layer.add_child(vignette)
+	var motes = GPUParticles3D.new()
+	motes.amount = 900
+	motes.lifetime = 14.0
+	motes.preprocess = 14.0
+	motes.visibility_aabb = AABB(Vector3(-60, -2, -100), Vector3(120, 50, 200))
+	motes.position = Vector3(0, 0, -60)
+	var mote_process = ParticleProcessMaterial.new()
+	mote_process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mote_process.emission_box_extents = Vector3(48, 18, 82)
+	mote_process.emission_shape_offset = Vector3(0, 19, 0)
+	mote_process.direction = Vector3(0.3, -0.1, 0.2)
+	mote_process.spread = 180.0
+	mote_process.initial_velocity_min = 0.05
+	mote_process.initial_velocity_max = 0.35
+	mote_process.gravity = Vector3(0.05, -0.02, 0)
+	mote_process.turbulence_enabled = true
+	mote_process.turbulence_noise_strength = 0.4
+	mote_process.turbulence_noise_scale = 6.0
+	var twinkle = Gradient.new()
+	twinkle.set_color(0, Color(0.85, 0.9, 1.0, 0.0))
+	twinkle.add_point(0.25, Color(0.85, 0.9, 1.0, 0.5))
+	twinkle.add_point(0.75, Color(1.0, 0.95, 0.85, 0.45))
+	twinkle.set_color(twinkle.get_point_count() - 1, Color(1.0, 0.95, 0.85, 0.0))
+	var twinkle_texture = GradientTexture1D.new()
+	twinkle_texture.gradient = twinkle
+	mote_process.color_ramp = twinkle_texture
+	motes.process_material = mote_process
+	var mote_mesh = QuadMesh.new()
+	mote_mesh.size = Vector2.ONE * 0.09
+	var mote_material = StandardMaterial3D.new()
+	mote_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mote_material.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mote_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mote_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mote_material.vertex_color_use_as_albedo = true
+	mote_mesh.material = mote_material
+	motes.draw_pass_1 = mote_mesh
+	add_child(motes)
+	mist_root = Node3D.new()
+	add_child(mist_root)
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 5521
+	var mist_mesh = QuadMesh.new()
+	mist_mesh.size = Vector2.ONE
+	mist_mesh.orientation = PlaneMesh.FACE_Y
+	var mist_multi = MultiMesh.new()
+	mist_multi.transform_format = MultiMesh.TRANSFORM_3D
+	mist_multi.use_custom_data = true
+	mist_multi.mesh = mist_mesh
+	mist_multi.instance_count = 46
+	for i in mist_multi.instance_count:
+		var size = rng.randf_range(26.0, 48.0)
+		var spot: Vector3
+		if i < 18:
+			spot = Vector3(rng.randf_range(-30.0, 30.0), rng.randf_range(0.6, 2.2), -rng.randf_range(-8.0, 130.0))
+		else:
+			var side = -1.0 if i % 2 == 0 else 1.0
+			spot = Vector3(side * rng.randf_range(36.0, 52.0), rng.randf_range(5.0, 24.0), -rng.randf_range(-10.0, 140.0))
+			if i % 7 == 0:
+				spot = Vector3(rng.randf_range(-45.0, 45.0), rng.randf_range(5.0, 26.0), -rng.randf_range(126.0, 150.0))
+		var basis = Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(size, 1.0, size * rng.randf_range(0.5, 0.9)))
+		mist_multi.set_instance_transform(i, Transform3D(basis, spot))
+		mist_multi.set_instance_custom_data(i, Color(rng.randf(), 0, 0, 0))
+	var mist = MultiMeshInstance3D.new()
+	mist.multimesh = mist_multi
+	mist.material_override = mist_material
+	mist.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mist_root.add_child(mist)
+	for spot in [Vector3(26, 3.2, -126.0), Vector3(-38.0, 18.6, -60.0), Vector3(38.0, 18.6, -60.0), Vector3(0, 18.6, -130.0)]:
+		var glow = OmniLight3D.new()
+		glow.position = spot
+		glow.light_color = Color("ffb867")
+		glow.light_energy = 1.6 if spot.y < 10.0 else 1.1
+		glow.omni_range = 14.0 if spot.y < 10.0 else 22.0
+		glow.shadow_enabled = false
+		add_child(glow)
+	var rim = DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-14, 180, 0)
+	rim.light_color = Color("6f86c9")
+	rim.light_energy = 0.32
+	rim.shadow_enabled = false
+	add_child(rim)
+
+
+func _light_shaft(origin: Vector3, target: Vector3, width: float) -> void:
+	var length = origin.distance_to(target)
+	var cone = CylinderMesh.new()
+	cone.top_radius = width * 0.25
+	cone.bottom_radius = width * 2.6
+	cone.height = 1.0
+	cone.radial_segments = 20
+	cone.rings = 1
+	cone.cap_top = false
+	cone.cap_bottom = false
+	var shaft = MeshInstance3D.new()
+	shaft.mesh = cone
+	shaft.material_override = shaft_material
+	shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var forward = (target - origin).normalized()
+	var axis_y = -forward
+	var axis_x = axis_y.cross(Vector3.FORWARD if absf(axis_y.z) < 0.9 else Vector3.RIGHT).normalized()
+	var axis_z = axis_x.cross(axis_y).normalized()
+	var radial_scale = length / 70.0
+	shaft.transform = Transform3D(
+		Basis(axis_x * radial_scale * 6.0, axis_y * length, axis_z * radial_scale * 6.0),
+		(origin + target) * 0.5)
+	add_child(shaft)
+
+
 func _spotlight(position: Vector3, target: Vector3, color: Color) -> void:
+	_light_shaft(position, target, 1.0)
 	var light = SpotLight3D.new()
 	light.position = position
 	light.light_color = color
