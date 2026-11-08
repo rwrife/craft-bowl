@@ -263,7 +263,7 @@ func _build_stadium() -> void:
 			var support_z = -9.0 - float(support) * 14.5
 			_box(self, Vector3(side * 51.8, 6.2, support_z),
 				Vector3(0.8, 12.4, 0.9), fascia)
-		for corner in [-1.0, 1.0]:
+		for corner in [-1.0]:
 			var corner_piece = _box(self,
 				Vector3(side * 43.5, 8.2, -60.0 + corner * 67.0),
 				Vector3(13.0, 1.4, 13.0), concrete)
@@ -271,33 +271,27 @@ func _build_stadium() -> void:
 		for z in [-8.0, -55.0, -105.0]:
 			_light_bank(Vector3(side * 73.5, 35, z), true)
 			_spotlight(Vector3(side * 70.0, 35.0, z), Vector3(0.0, 0.0, z), Color("dce8ff"))
-	for end_side in [-1.0, 1.0]:
-		for row in 30:
-			var upper = row >= 16
-			var distance = 125.0 + float(row) * 0.9
-			var height = 0.9 + minf(float(row), 15.0) * 0.55
-			if upper:
-				distance = 136.0 + float(row - 16) * 0.9
-				height = 11.0 + float(row - 16) * 0.8
-			var width = 135.0 if upper else 95.0
-			var end_z = end_side * distance
-			_box(self, Vector3(0, height * 0.5, end_z), Vector3(width, height, 0.9),
-				concrete.darkened(0.12 if row % 2 else 0.0))
-			for along in (120 if upper else 84):
-				var x = -width * 0.5 + 0.5 + float(along) * 1.12
-				var palette = generator.randi_range(0, CROWD_COLORS.size() - 1)
-				seats.append({"pos": Vector3(x, height, end_z),
-					"color": CROWD_COLORS[palette], "palette": palette, "row": row,
-					"skin": SKIN_COLORS[generator.randi_range(0, SKIN_COLORS.size() - 1)]})
-		_box(self, Vector3(0, 11.5, end_side * 136.5), Vector3(119, 0.8, 0.35),
-			Color("f15b32"), true)
-	_box(self, Vector3(0, 12.55, -60), Vector3(106, 0.8, 0.45), Color("f15b32"), true)
+	for row in 30:
+		var upper = row >= 16
+		var distance = 125.0 + float(row) * 0.9
+		var height = 0.9 + minf(float(row), 15.0) * 0.55
+		if upper:
+			distance = 136.0 + float(row - 16) * 0.9
+			height = 11.0 + float(row - 16) * 0.8
+		var width = 135.0 if upper else 95.0
+		_box(self, Vector3(0, height * 0.5, -distance), Vector3(width, height, 0.9),
+			concrete.darkened(0.12 if row % 2 else 0.0))
+		for along in (120 if upper else 84):
+			var x = -width * 0.5 + 0.5 + float(along) * 1.12
+			var palette = generator.randi_range(0, CROWD_COLORS.size() - 1)
+			seats.append({"pos": Vector3(x, height, -distance),
+				"color": CROWD_COLORS[palette], "palette": palette, "row": row,
+				"skin": SKIN_COLORS[generator.randi_range(0, SKIN_COLORS.size() - 1)]})
+	_box(self, Vector3(0, 11.5, -136.5), Vector3(119, 0.8, 0.35), Color("f15b32"), true)
 	_build_jumbotron()
-	for end_side in [-1.0, 1.0]:
-		for x in [-37.0, 0.0, 37.0]:
-			_light_bank(Vector3(x, 29, end_side * 153.0), false)
-			_spotlight(Vector3(x, 29.0, end_side * 151.0),
-				Vector3(x * 0.15, 0.0, end_side * 105.0), Color("d8e5ff"))
+	for x in [-37.0, 37.0]:
+		_light_bank(Vector3(x, 29, -153), false)
+		_spotlight(Vector3(x, 29.0, -151.0), Vector3(x * 0.15, 0.0, -105.0), Color("d8e5ff"))
 	_build_crowd(seats)
 	for z in [-121.0, 1.0]:
 		var yellow = Color("ffc819")
@@ -310,35 +304,25 @@ func _build_stadium() -> void:
 func _build_jumbotron() -> void:
 	var frame = Color("101827")
 	var screen = Color("15374a")
-	_box(self, Vector3(0, 25.0, -108), Vector3(20.0, 10.0, 1.2), frame)
-	for side in [-1.0, 1.0]:
-		var face_z = -108.0 + side * 0.66
-		_box(self, Vector3(0, 25.2, face_z), Vector3(18.6, 8.6, 0.08), screen, true)
-		var heading = Label3D.new()
-		heading.text = "BLOCK BOWL  •  GAME DAY"
-		heading.font_size = 128
-		heading.pixel_size = 0.012
-		heading.modulate = Color("e9f8ff")
-		heading.position = Vector3(0, 27.1, face_z + side * 0.06)
-		heading.rotation.y = 0.0 if side > 0 else PI
-		add_child(heading)
-		var score = Label3D.new()
-		score.text = "HOME  00  :  00  AWAY"
-		score.font_size = 96
-		score.pixel_size = 0.012
-		score.modulate = Color("ffd66b")
-		score.position = Vector3(0, 24.0, face_z + side * 0.06)
-		score.rotation.y = 0.0 if side > 0 else PI
-		add_child(score)
-		var ads = Label3D.new()
-		ads.text = "KICKOFF  •  DEFEND YOUR TURF  •  KICKOFF"
-		ads.font_size = 56
-		ads.pixel_size = 0.009
-		ads.modulate = Color("66efff")
-		ads.position = Vector3(0, 21.9, face_z + side * 0.06)
-		ads.rotation.y = 0.0 if side > 0 else PI
-		add_child(ads)
-	_box(self, Vector3(0, 18.3, -108), Vector3(2.4, 4.8, 2.4), Color("1c2633"))
+	var z = -156.0
+	for x in [-8.0, 8.0]:
+		_box(self, Vector3(x, 12.5, z - 1.0), Vector3(1.4, 25.0, 1.4), frame)
+	_box(self, Vector3(0, 30.0, z), Vector3(24.0, 11.0, 1.4), frame)
+	_box(self, Vector3(0, 30.2, z + 0.74), Vector3(22.4, 9.6, 0.08), screen, true)
+	_box(self, Vector3(0, 35.9, z + 0.2), Vector3(24.6, 0.5, 1.6), Color("29d8f2"), true)
+	var lines = [
+		["BLOCK BOWL  •  GAME DAY", 128, 0.014, 32.6, Color("e9f8ff")],
+		["HOME  00  :  00  AWAY", 96, 0.015, 29.6, Color("ffd66b")],
+		["KICKOFF  •  DEFEND YOUR TURF  •  KICKOFF", 56, 0.011, 26.8, Color("66efff")],
+	]
+	for line in lines:
+		var label = Label3D.new()
+		label.text = line[0]
+		label.font_size = line[1]
+		label.pixel_size = line[2]
+		label.modulate = line[4]
+		label.position = Vector3(0, line[3], z + 0.8)
+		add_child(label)
 
 
 func _light_bank(center: Vector3, side_facing: bool) -> void:
@@ -489,18 +473,25 @@ func _build_sideline(team: Dictionary, side: float) -> void:
 	for z in [-70.0, -50.0]:
 		_box(sideline_root, Vector3(side * 36.2, 0.13, z), Vector3(1.25, 0.22, 0.45), Color("303846"))
 	var players: Array = []
-	var cluster_centers = [34.0, 49.0, 69.0, 85.0]
-	for cluster_index in cluster_centers.size():
-		for row in 4:
-			for lane in 2:
-				var index = cluster_index * 8 + row * 2 + lane
-				var x = 29.0 + float(lane) * 1.35
-				var z = -(cluster_centers[cluster_index] + (float(row) - 1.5) * 1.3)
-				players.append({
-					"position": Vector3(side * x, 0, z),
-					"phase": float(index) * 1.73 + side * 0.9,
-					"skin": SKIN_COLORS[index % SKIN_COLORS.size()],
-				})
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 7741 if side < 0 else 1934
+	var attempts = 0
+	while players.size() < 32 and attempts < 4000:
+		attempts += 1
+		var candidate = Vector3(side * rng.randf_range(28.6, 32.4), 0, -rng.randf_range(31.0, 89.0))
+		var crowded = false
+		for other in players:
+			if other["position"].distance_to(candidate) < 0.95:
+				crowded = true
+				break
+		if crowded or (absf(candidate.x) > 31.0 and candidate.z < -46.5 and candidate.z > -73.5):
+			continue
+		players.append({
+			"position": candidate,
+			"phase": rng.randf_range(0.0, TAU),
+			"facing": rng.randf_range(-0.55, 0.55),
+			"skin": SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)],
+		})
 	_build_sideline_multimeshes(team, side, players, false)
 	var coaches: Array = []
 	for i in 3:
@@ -594,7 +585,7 @@ func _update_sidelines() -> void:
 				position.x += cos(elapsed * 0.85 + phase) * 0.025
 				position.y += sin(elapsed * 1.8 + phase) * 0.035 + cheer * 0.16
 				position.z += sin(elapsed * 0.9 + phase) * 0.06
-				var yaw = -side * PI / 2.0 + sin(elapsed * 1.4 + phase) * 0.025
+				var yaw = -side * PI / 2.0 + member.get("facing", 0.0) + sin(elapsed * 1.4 + phase) * 0.025
 				var rotation = Basis(Vector3.UP, yaw)
 				var part_offset = offset
 				var part_rotation = Basis()
@@ -670,7 +661,7 @@ func _build_ball() -> void:
 
 func _build_effects() -> void:
 	confetti = _particles(160, 2.5, Color("ffdc42"), 0.16, true, 5.0, 11.0, 10.0)
-	impact_sparks = _particles(72, 0.72, Color("52dfff"), 0.12, true, 8.0, 17.0, 13.0)
+	impact_sparks = _turf_kickup()
 	turbo_trail = _particles(32, 0.38, Color("42caff"), 0.1, false, 1.0, 3.5, 1.0)
 	event_light = OmniLight3D.new()
 	event_light.light_color = Color("55dfff")
@@ -720,6 +711,56 @@ func _particles(
 	return particles
 
 
+func _turf_kickup() -> GPUParticles3D:
+	var particles = GPUParticles3D.new()
+	particles.amount = 26
+	particles.lifetime = 0.6
+	particles.one_shot = true
+	particles.explosiveness = 0.85
+	particles.emitting = false
+	particles.local_coords = true
+	particles.visibility_aabb = AABB(Vector3(-6, -2, -6), Vector3(12, 8, 12))
+	var process = ParticleProcessMaterial.new()
+	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	process.emission_sphere_radius = 0.45
+	process.direction = Vector3(0.0, 1.0, 0.0)
+	process.spread = 38.0
+	process.initial_velocity_min = 1.6
+	process.initial_velocity_max = 3.6
+	process.gravity = Vector3(0.0, -14.0, 0.0)
+	process.damping_min = 0.6
+	process.damping_max = 1.4
+	process.angular_velocity_min = -360.0
+	process.angular_velocity_max = 360.0
+	process.scale_min = 0.5
+	process.scale_max = 1.1
+	var colors = Gradient.new()
+	colors.offsets = PackedFloat32Array([0.0, 0.45, 0.7, 1.0])
+	colors.colors = PackedColorArray([
+		Color("4a3322"), Color("5e4029"), Color("2f6b33"), Color("3b8a3f"),
+	])
+	var ramp = GradientTexture1D.new()
+	ramp.gradient = colors
+	process.color_initial_ramp = ramp
+	var fade = Curve.new()
+	fade.add_point(Vector2(0.0, 1.0))
+	fade.add_point(Vector2(0.7, 1.0))
+	fade.add_point(Vector2(1.0, 0.0))
+	var fade_texture = CurveTexture.new()
+	fade_texture.curve = fade
+	process.scale_curve = fade_texture
+	particles.process_material = process
+	var clod = BoxMesh.new()
+	clod.size = Vector3.ONE * 0.09
+	var material = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	clod.material = material
+	particles.draw_pass_1 = clod
+	add_child(particles)
+	return particles
+
+
 func _update_effects(delta: float) -> void:
 	var turbo = false
 	if game.phase == "live" and game.controlled >= 0:
@@ -743,14 +784,11 @@ func _update_effects(delta: float) -> void:
 			event_light.omni_range = 22.0
 			event_light_time = 0.45
 		else:
-			impact_sparks.position = impact
+			impact_sparks.position = Vector3(impact.x, 0.05, impact.z)
 			impact_sparks.restart()
 			impact_sparks.emitting = true
-			event_light.light_color = Color("4fe2ff")
-			event_light.omni_range = 12.0
-			event_light_time = 0.24
 	if event_light_time > 0.0:
 		event_light_time = maxf(0.0, event_light_time - delta)
-		event_light.light_energy = 8.0 * event_light_time / (0.45 if game.last_outcome == "touchdown" else 0.24)
+		event_light.light_energy = 8.0 * event_light_time / 0.45
 	else:
 		event_light.light_energy = 0.0
