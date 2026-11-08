@@ -30,10 +30,12 @@ The Godot 4.4.1 project at the repository root is a cross-platform runtime for t
 shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
 simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
 stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights, bloom,
-turbo trails, tackle sparks, and touchdown confetti. The sideline has a wider marked team area with
-benches, reserve players, and coaches. Crowd characters use detailed block models in the nearest four
-rows, lighter block models in the middle rows, then camera-facing pixel billboards farther away. The
-Swift/iOS app remains available in `App/` and `Packages/`.
+turbo trails, tackle sparks, and touchdown confetti. Its stacked bowl has a slight upper-deck overhang,
+electronic ribbon ads, and a lit jumbo tron. The wider sidelines include benches, coaches, and 32
+grouped players per team between the 20-yard lines; they sway subtly and jump to cheer during live plays.
+Crowd characters use detailed block models in the nearest four rows, lighter block models in the middle
+rows, then camera-facing pixel billboards farther away. The Swift/iOS app remains available in `App/`
+and `Packages/`.
 
 Open `project.godot` in Godot 4.4.1 or later and run the project. The Godot project uses the
 Compatibility renderer and a 1280×720 landscape viewport. To run the deterministic gameplay tests:

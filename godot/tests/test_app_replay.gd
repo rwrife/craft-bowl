@@ -42,6 +42,15 @@ func _run() -> void:
 		"keyboard movement and action bindings are registered")
 	check(has_controller_binding("move_up") and has_controller_binding("pass_left") and
 		has_controller_binding("turbo"), "gamepad movement, buttons, and trigger are registered")
+	var sideline_player_groups = 0
+	for group in app.stadium.sideline_groups:
+		if group["members"].size() == 32:
+			sideline_player_groups += 1
+			for member in group["members"]:
+				var yard_line = -member["position"].z
+				check(yard_line >= 30.0 and yard_line <= 90.0,
+					"sideline players stay grouped between the 20-yard lines")
+	check(sideline_player_groups == 2, "both teams field 32 grouped sideline players")
 	var pad = app.ui.pad
 	pad.configure(true, ["turbo"])
 	var touch = InputEventScreenTouch.new()
