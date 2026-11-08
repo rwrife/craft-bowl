@@ -31,8 +31,9 @@ shipping playbooks, rating curves, team catalog, logo, and audio while implement
 simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
 stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights, bloom,
 turbo trails, turf kick-up on tackles, and touchdown confetti. Its stacked bowl has a slight upper-deck overhang,
-electronic ribbon ads, and a lit jumbo tron. The wider sidelines include benches, coaches, and 32
-grouped players per team between the 20-yard lines; they sway subtly and jump to cheer during live plays.
+electronic ribbon ads, and a lit jumbo tron above the far end zone. The wider sidelines include benches,
+coaches, and 32 loosely scattered players per team between the 20-yard lines; they sway subtly and jump
+to cheer during live plays.
 Crowd characters use detailed block models in the nearest four rows, lighter block models in the middle
 rows, then camera-facing pixel billboards farther away. The Swift/iOS app remains available in `App/`
 and `Packages/`.
