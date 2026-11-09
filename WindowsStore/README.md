@@ -37,9 +37,13 @@ vertex colors directly, whereas Godot's normal OBJ export only ships an imported
 Exported Windows builds resolve that file relative to the executable, not the
 launcher's working directory.
 
-First reserve **Block Bowl** in Partner Center. Under **Product management > Product
-identity**, copy the exact, case-sensitive values into repository **Settings >
-Secrets and variables > Actions > Variables**:
+The committed `AppxManifest.xml` contains the reserved **Block Bowl** Partner Center
+identity: `Infinityball.BlockBowl`, publisher
+`CN=874CA4CF-90B8-4C53-AFBC-CCAC42030583`, and publisher display name `Infinityball`.
+The workflow uses these values by default; repository variables are not required.
+To override them, copy the exact, case-sensitive values from **Product management >
+Product identity** into repository **Settings > Secrets and variables > Actions >
+Variables**:
 
 | Repository variable | Partner Center value |
 | --- | --- |
@@ -90,16 +94,16 @@ New-Item -ItemType Directory -Force -Path .\build\windows\App
 Copy-Item .\App\BlockBowlLogo.obj .\build\windows\App\BlockBowlLogo.obj
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\WindowsStore\tools\build-msix.ps1 `
     -PackageVersion "1.0.0.0" `
-    -IdentityName "YOUR_PARTNER_CENTER_IDENTITY_NAME" `
-    -Publisher "CN=YOUR_PARTNER_CENTER_PUBLISHER" `
-    -PublisherDisplayName "YOUR_PARTNER_CENTER_PUBLISHER_DISPLAY_NAME"
+    -IdentityName "Infinityball.BlockBowl" `
+    -Publisher "CN=874CA4CF-90B8-4C53-AFBC-CCAC42030583" `
+    -PublisherDisplayName "Infinityball"
 ```
 
-Replace the identity placeholders with your Partner Center values. Before rebuilding,
+Use the reserved Partner Center identity values shown above. Before rebuilding,
 remove only the generated `build\store\package` staging directory. The script refuses
 to reuse it so stale files cannot accidentally enter a later package. Build outputs
-are git-ignored. The committed manifest is a template; do not submit it until the
-script has populated the identity.
+are git-ignored. The committed manifest is a template with the Store identity;
+the script populates its package version and generates its referenced assets.
 
 ## Rebuild the artwork
 

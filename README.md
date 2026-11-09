@@ -111,15 +111,13 @@ Partner Center; see that guide for the required repository identity variables an
 
 ## CI status
 
-`main` PR/push CI now enforces all issue-#2 core gates on hosted macOS runners:
+Automatic macOS/Xcode CI on pull requests and pushes is currently disabled while
+development focuses on Windows. Swift tests, Metal compilation, Swift formatting,
+and iOS Simulator builds are not enforced by CI.
 
-- Swift package tests (`swift test`) with xUnit output at `TestResults/CraftBowlKit.xml`
-- Metal shader compile with `-Werror` plus explicit `metallib` link
-- Strict `swift-format` lint on changed Swift files in pull requests
-- App-scheme simulator tests via `xcodebuild test`
-- Test artifact upload (`xUnit` + `.xcresult`) for every run
-
-`swift-format` is intentionally scoped to changed Swift files in PRs while legacy formatting debt is burned down.
+The manually triggered **Release Windows Store** workflow still runs Godot gameplay
+tests, smoke-tests the exported Windows game, and builds the Store MSIX. The manual
+TestFlight release workflow remains available for future iOS releases.
 
 ### Command-line run (Simulator)
 
