@@ -30,7 +30,10 @@ The Godot 4.4.1 project at the repository root is a cross-platform runtime for t
 shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
 simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
 stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights with fake volumetric light shafts, height fog, drifting haze motes, low mist, warm accent lights, a screen vignette, bloom,
-subtle translucent turbo trails, turf kick-up on tackles, and touchdown confetti, pyro jets, and fireworks over the bowl.
+subtle translucent turbo trails, turf kick-up on tackles, and touchdown confetti, pyro jets, fireworks, and a team-color light show over the bowl.
+Game-day touches include lens flares on the light banks, crowd camera flashes that build with excitement, a follow-spot on the ball carrier,
+light pooling on the turf, contact shadows, striped officials, a chain crew with down box, a sideline TV camera operator, kicking nets and carts,
+cheerleaders at each end-zone corner, and a film-style post pass with color grade, chromatic fringe, and grain.
 The title logo slams onto the screen with squash, camera shake, a flash, block dust, and a thud.
 Surfaces use pixel-noise block textures, and ad boards use pixelated lettering. Its stacked bowl has a 52-row double deck
 with a slight upper-deck overhang, aisles, vomitories, stair rails, a lit glass suite level, roof-mounted light banks, a single home tunnel in an end-zone

@@ -69,12 +69,103 @@ void fragment() {
 """
 const VIGNETTE_SHADER = """
 shader_type canvas_item;
+uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
 void fragment() {
-	vec2 uv = UV - 0.5;
-	uv.x *= 1.2;
-	float shade = smoothstep(0.3, 0.82, length(uv));
-	float top = smoothstep(-0.2, -0.5, uv.y) * 0.25;
-	COLOR = vec4(0.004, 0.007, 0.02, clamp(shade * 0.7 + top, 0.0, 0.85));
+	vec2 uv = SCREEN_UV;
+	vec2 c = uv - 0.5;
+	float d = length(c * vec2(1.2, 1.0));
+	vec2 shift = c * 0.0025 * smoothstep(0.2, 0.75, d);
+	vec3 col = vec3(texture(screen_texture, uv + shift).r, texture(screen_texture, uv).g, texture(screen_texture, uv - shift).b);
+	float luma = dot(col, vec3(0.299, 0.587, 0.114));
+	col += vec3(0.025, 0.008, -0.02) * smoothstep(0.45, 1.0, luma);
+	col += vec3(-0.01, 0.004, 0.022) * (1.0 - smoothstep(0.0, 0.3, luma));
+	float shade = smoothstep(0.3, 0.82, d);
+	float top = smoothstep(-0.2, -0.5, c.y) * 0.25;
+	col = mix(col, vec3(0.004, 0.007, 0.02), clamp(shade * 0.7 + top, 0.0, 0.85));
+	float grain = fract(sin(dot(floor(FRAGCOORD.xy) + fract(TIME * 7.0) * vec2(113.0, 71.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	col += grain * 0.03;
+	COLOR = vec4(col, 1.0);
+}
+"""
+const FLARE_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform vec4 tint : source_color = vec4(0.86, 0.92, 1.0, 1.0);
+uniform float strength = 1.0;
+void vertex() {
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+}
+void fragment() {
+	vec2 uv = (UV - 0.5) * 2.0;
+	float r = length(uv);
+	float core = exp(-r * r * 70.0);
+	float halo = exp(-r * r * 7.0) * 0.32;
+	float streak = exp(-abs(uv.y) * 70.0) * (1.0 - smoothstep(0.0, 1.0, abs(uv.x))) * 0.7;
+	float spike = exp(-abs(uv.x) * 80.0) * (1.0 - smoothstep(0.0, 0.55, abs(uv.y))) * 0.3;
+	float twinkle = 0.9 + 0.1 * sin(TIME * 2.7 + NODE_POSITION_WORLD.x * 0.4 + NODE_POSITION_WORLD.z * 0.2);
+	vec3 streak_tint = vec3(0.6, 0.78, 1.0);
+	ALBEDO = tint.rgb * (core + halo + spike) + streak_tint * streak;
+	ALPHA = clamp((core + halo + streak + spike) * strength * twinkle, 0.0, 1.0);
+}
+"""
+const FLASH_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform float rate = 0.05;
+varying float flash;
+void vertex() {
+	float seed = INSTANCE_CUSTOM.x;
+	float t = TIME * 0.45 + seed * 97.0;
+	float id = floor(t);
+	float h = fract(sin(id * 12.9898 + seed * 78.233) * 43758.5453);
+	flash = h < rate ? max(0.0, 1.0 - fract(t) * 16.0) : 0.0;
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	VERTEX *= flash;
+}
+void fragment() {
+	vec2 uv = (UV - 0.5) * 2.0;
+	float r = length(uv);
+	float glow = exp(-r * r * 9.0) + exp(-abs(uv.y) * 40.0) * (1.0 - abs(uv.x)) * 0.5;
+	ALBEDO = vec3(1.0, 0.97, 0.9);
+	ALPHA = clamp(glow * flash * 1.4, 0.0, 1.0);
+}
+"""
+const POOL_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+varying vec3 world;
+void vertex() {
+	world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+float pool(vec2 p, vec2 c, vec2 r) {
+	vec2 d = (p - c) / r;
+	return exp(-dot(d, d));
+}
+void fragment() {
+	vec2 p = world.xz;
+	float light = 0.0;
+	for (int i = 0; i < 3; i++) {
+		float z = i == 0 ? -15.0 : (i == 1 ? -62.0 : -110.0);
+		light += pool(p, vec2(-9.0, z), vec2(17.0, 15.0));
+		light += pool(p, vec2(9.0, z), vec2(17.0, 15.0));
+	}
+	light += pool(p, vec2(-7.5, -88.0), vec2(15.0, 14.0)) + pool(p, vec2(7.5, -88.0), vec2(15.0, 14.0));
+	light += pool(p, vec2(0.0, -38.0), vec2(14.0, 12.0)) * 0.7;
+	float f = 0.6 + 0.45 * clamp(light, 0.0, 1.0);
+	f *= 1.0 - 0.16 * smoothstep(27.0, 46.0, abs(p.x));
+	f *= 1.0 - 0.12 * smoothstep(-122.0, -150.0, p.y);
+	ALBEDO = vec3(0.0, 0.004, 0.012);
+	ALPHA = clamp(1.0 - f, 0.0, 0.5);
+}
+"""
+const BLOB_SHADER = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float strength = 0.5;
+void fragment() {
+	float r = length(UV - 0.5) * 2.0;
+	ALBEDO = vec3(0.0);
+	ALPHA = strength * (1.0 - smoothstep(0.15, 1.0, r));
 }
 """
 const CROWD_SHADER = """
@@ -133,6 +224,21 @@ var crowd_material: ShaderMaterial
 var shaft_material: ShaderMaterial
 var mist_material: ShaderMaterial
 var mist_root: Node3D
+var flare_material: ShaderMaterial
+var flash_material: ShaderMaterial
+var blob_material: ShaderMaterial
+var blob_mesh: QuadMesh
+var stadium_spots: Array = []
+var follow_spot: SpotLight3D
+var light_show_time = 0.0
+var light_show_color = Color.WHITE
+var officials: Array = []
+var official_root: Node3D
+var chain_sticks: Array = []
+var down_box: Node3D
+var down_box_label: Label3D
+var chain_links: MeshInstance3D
+var cheerleaders: Array = []
 var excitement = 0.0
 var down_marker: Node3D
 var down_marker_label: Label3D
@@ -155,6 +261,12 @@ func _ready() -> void:
 	mist_shader.code = MIST_SHADER
 	mist_material.shader = mist_shader
 	mist_material.render_priority = 1
+	flare_material = _shader_material(FLARE_SHADER, 3)
+	flash_material = _shader_material(FLASH_SHADER, 3)
+	blob_material = _shader_material(BLOB_SHADER, 1)
+	blob_mesh = QuadMesh.new()
+	blob_mesh.size = Vector2.ONE
+	blob_mesh.orientation = PlaneMesh.FACE_Y
 	_build_environment()
 	_build_field()
 	_build_stadium()
@@ -171,6 +283,7 @@ func _ready() -> void:
 	camera.far = 400.0
 	add_child(camera)
 	_build_atmosphere()
+	_build_game_day()
 
 
 func set_game(simulation) -> void:
@@ -194,6 +307,7 @@ func set_game(simulation) -> void:
 		player_nodes.append(_make_player(p, team, not p["offense"]))
 	_build_sideline(game.home, -1.0)
 	_build_sideline(game.away, 1.0)
+	_build_cheerleaders(game.home, game.away)
 	_update_camera(1.0)
 	update_view(0.0)
 
@@ -214,6 +328,7 @@ func update_view(delta: float) -> void:
 	line_of_scrimmage.visible = game.phase != "dead"
 	first_down_line.visible = game.phase != "dead"
 	_update_effects(delta)
+	_update_game_day(delta)
 	_update_sidelines()
 	_update_displays()
 	var target = 0.12
@@ -243,6 +358,13 @@ func update_view(delta: float) -> void:
 		parts["left_arm"].rotation.x = -swing * 0.8
 		parts["right_arm"].rotation.x = swing * 0.8
 		parts["marker"].visible = game.phase == "live" and game.controlled == i
+		var shadow: MeshInstance3D = parts["shadow"]
+		shadow.position = Vector3(root.position.x, 0.088, root.position.z)
+		if p["down"] or p["dive_ticks"] > 0:
+			shadow.position += root.basis * Vector3(0, 0, -0.9)
+			shadow.scale = Vector3(1.0, 1.0, 1.9)
+		else:
+			shadow.scale = Vector3.ONE
 	var spot: Vector2 = game.ball_position()
 	ball.position = Vector3(spot.x, game.ball_height(), -spot.y)
 	if game.ball_state == "held" and game.carrier >= 0:
@@ -315,6 +437,9 @@ func _material(color: Color, emissive: bool = false, transparent: bool = false, 
 	var material = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.roughness = 0.85
+	if kind == "grass":
+		material.roughness = 0.58
+		material.metallic_specular = 0.62
 	if not emissive and not transparent and kind != "":
 		_apply_pixels(material, kind)
 	if emissive:
@@ -753,6 +878,15 @@ func _light_bank(center: Vector3, side_facing: bool) -> void:
 			var lamp_pos = center + (Vector3(0, level, offset) if side_facing else Vector3(offset, level, 0))
 			var lamp_size = Vector3(0.75, 0.95, 1.15) if side_facing else Vector3(1.15, 0.95, 0.75)
 			_box(self, lamp_pos, lamp_size, Color("fff7d5"), true)
+	var flare = MeshInstance3D.new()
+	var flare_quad = QuadMesh.new()
+	flare_quad.size = Vector2(30, 30)
+	flare.mesh = flare_quad
+	flare.material_override = flare_material
+	flare.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var inward = Vector3(-signf(center.x) * 1.8, -0.6, 0) if side_facing else Vector3(0, -0.6, 1.8)
+	flare.position = center + inward
+	add_child(flare)
 
 
 func _build_atmosphere() -> void:
@@ -803,6 +937,17 @@ func _build_atmosphere() -> void:
 	mote_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mote_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mote_material.vertex_color_use_as_albedo = true
+	var mote_gradient = Gradient.new()
+	mote_gradient.set_color(0, Color(1, 1, 1, 1))
+	mote_gradient.set_color(1, Color(1, 1, 1, 0))
+	var mote_texture = GradientTexture2D.new()
+	mote_texture.gradient = mote_gradient
+	mote_texture.fill = GradientTexture2D.FILL_RADIAL
+	mote_texture.fill_from = Vector2(0.5, 0.5)
+	mote_texture.fill_to = Vector2(1.0, 0.5)
+	mote_texture.width = 32
+	mote_texture.height = 32
+	mote_material.albedo_texture = mote_texture
 	mote_mesh.material = mote_material
 	motes.draw_pass_1 = mote_mesh
 	add_child(motes)
@@ -889,6 +1034,7 @@ func _spotlight(position: Vector3, target: Vector3, color: Color) -> void:
 	light.shadow_enabled = false
 	add_child(light)
 	light.look_at(target, Vector3.UP)
+	stadium_spots.append({"light": light, "color": color})
 
 
 func _build_dressing() -> void:
@@ -1448,7 +1594,365 @@ func _make_player(p: Dictionary, team: Dictionary, away: bool) -> Dictionary:
 	root.add_child(marker)
 	limbs["root"] = root
 	limbs["marker"] = marker
+	limbs["shadow"] = _blob(player_root, 1.5, 0.55)
 	return limbs
+
+
+func _shader_material(code: String, priority: int) -> ShaderMaterial:
+	var material = ShaderMaterial.new()
+	var shader = Shader.new()
+	shader.code = code
+	material.shader = shader
+	material.render_priority = priority
+	return material
+
+
+func _blob(parent: Node3D, size: float, strength: float) -> MeshInstance3D:
+	var blob = MeshInstance3D.new()
+	blob.mesh = blob_mesh
+	var material: ShaderMaterial = blob_material
+	if not is_equal_approx(strength, 0.5):
+		material = blob_material.duplicate()
+		material.set_shader_parameter("strength", strength)
+	blob.material_override = material
+	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	blob.scale = Vector3.ONE
+	blob.mesh = blob_mesh
+	blob.transform = Transform3D(Basis().scaled(Vector3(size, 1.0, size)), Vector3(0, 0.088, 0))
+	parent.add_child(blob)
+	return blob
+
+
+func _build_game_day() -> void:
+	var pool = MeshInstance3D.new()
+	var pool_quad = QuadMesh.new()
+	pool_quad.size = Vector2(FIELD_WIDTH + 34.0, 158.0)
+	pool_quad.orientation = PlaneMesh.FACE_Y
+	pool.mesh = pool_quad
+	pool.material_override = _shader_material(POOL_SHADER, 0)
+	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pool.position = Vector3(0, 0.075, -49)
+	add_child(pool)
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 90210
+	var flash_spots: Array = []
+	var occupied: Array = []
+	for seat in stand_seats:
+		if not seat["empty"]:
+			occupied.append(seat)
+	for i in mini(1100, occupied.size()):
+		var seat: Dictionary = occupied[rng.randi_range(0, occupied.size() - 1)]
+		flash_spots.append(seat["pos"] + Vector3(0, 1.45, 0))
+	for x in [-20.0, -14.0, -7.5, 8.0, 15.0, 21.0]:
+		for repeat in 6:
+			flash_spots.append(Vector3(x, 0.95, -123.0 - absf(x) * 0.03))
+	var flash_quad = QuadMesh.new()
+	flash_quad.size = Vector2(2.4, 2.4)
+	var flashes = MultiMesh.new()
+	flashes.transform_format = MultiMesh.TRANSFORM_3D
+	flashes.use_custom_data = true
+	flashes.mesh = flash_quad
+	flashes.instance_count = flash_spots.size()
+	for i in flash_spots.size():
+		flashes.set_instance_transform(i, Transform3D(Basis(), flash_spots[i]))
+		flashes.set_instance_custom_data(i, Color(rng.randf(), 0, 0, 0))
+	var flash_instance = MultiMeshInstance3D.new()
+	flash_instance.multimesh = flashes
+	flash_instance.material_override = flash_material
+	flash_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flash_instance.extra_cull_margin = 4.0
+	add_child(flash_instance)
+	follow_spot = SpotLight3D.new()
+	follow_spot.light_color = Color("fff0d2")
+	follow_spot.light_energy = 0.0
+	follow_spot.spot_range = 90.0
+	follow_spot.spot_angle = 6.5
+	follow_spot.spot_angle_attenuation = 0.6
+	follow_spot.shadow_enabled = false
+	follow_spot.position = Vector3(0, 48, -60)
+	add_child(follow_spot)
+	official_root = Node3D.new()
+	add_child(official_root)
+	var roles = [
+		{"base": Vector2(-3.0, -13.0), "follow": 0.6},
+		{"base": Vector2(2.0, 7.0), "follow": 0.5},
+		{"base": Vector2(-(FIELD_WIDTH / 2.0 + 1.2), 0.0), "follow": 0.0, "sideline": true},
+		{"base": Vector2(FIELD_WIDTH / 2.0 + 1.2, 0.0), "follow": 0.0, "sideline": true},
+		{"base": Vector2(-(FIELD_WIDTH / 2.0 - 1.5), 18.0), "follow": 0.2},
+		{"base": Vector2(FIELD_WIDTH / 2.0 - 1.5, 18.0), "follow": 0.2},
+		{"base": Vector2(1.0, 24.0), "follow": 0.35},
+	]
+	for i in roles.size():
+		var figure = _figure(official_root, Color("f4f4f2"), Color("f0f0ec"), Color("111318"), Color("111318") if i != 0 else Color("f4f4f2"), SKIN_COLORS[(i * 2 + 1) % SKIN_COLORS.size()], true)
+		figure.merge(roles[i])
+		figure["pos"] = Vector3(roles[i]["base"].x, 0, -(24.0 + roles[i]["base"].y))
+		figure["phase"] = float(i) * 1.7
+		officials.append(figure)
+	var chain_color = Color("ff7a1a")
+	for i in 3:
+		var crew = _figure(official_root, Color("ffd21f"), Color("1b1f2a"), Color("1b1f2a"), Color("1b1f2a"), SKIN_COLORS[(i + 3) % SKIN_COLORS.size()], false)
+		var pole = Node3D.new()
+		crew["root"].add_child(pole)
+		pole.position = Vector3(-0.42, 0, -0.1)
+		_box(pole, Vector3(0, 1.35, 0), Vector3(0.08, 2.7, 0.08), Color("e8e8e8"))
+		if i < 2:
+			_box(pole, Vector3(0, 2.75, 0), Vector3(0.34, 0.3, 0.12), chain_color, true)
+		else:
+			_box(pole, Vector3(0, 2.85, 0), Vector3(0.5, 0.5, 0.12), Color("15171d"))
+			down_box_label = Label3D.new()
+			down_box_label.text = "1"
+			down_box_label.font_size = 64
+			down_box_label.pixel_size = 0.006
+			down_box_label.outline_size = 0
+			down_box_label.modulate = Color("ffd21f")
+			down_box_label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+			down_box_label.position = Vector3(0, 2.85, 0)
+			pole.add_child(down_box_label)
+		crew["pos"] = Vector3(FIELD_WIDTH / 2.0 + 0.95, 0, -24.0)
+		crew["phase"] = float(i)
+		chain_sticks.append(crew)
+	chain_links = MeshInstance3D.new()
+	var link_mesh = BoxMesh.new()
+	link_mesh.size = Vector3.ONE
+	chain_links.mesh = link_mesh
+	chain_links.material_override = _material(Color("c9ced8"))
+	chain_links.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	official_root.add_child(chain_links)
+	var operator = _figure(official_root, Color("20242e"), Color("20242e"), Color("15171d"), Color("15171d"), SKIN_COLORS[1], false)
+	var rig = Node3D.new()
+	operator["root"].add_child(rig)
+	_box(rig, Vector3(0.32, 1.86, -0.05), Vector3(0.26, 0.3, 0.62), Color("15171d"))
+	_box(rig, Vector3(0.32, 1.86, -0.45), Vector3(0.18, 0.18, 0.24), Color("2b2f3a"))
+	_box(rig, Vector3(0.32, 1.86, -0.58), Vector3(0.14, 0.14, 0.02), Color("65c8ff"), true)
+	_box(rig, Vector3(0.32, 2.05, 0.15), Vector3(0.06, 0.06, 0.06), Color("ff2020"), true)
+	_box(rig, Vector3(0.32, 1.86, 0.32), Vector3(0.2, 0.22, 0.1), Color("2b2f3a"))
+	operator["pos"] = Vector3(-(FIELD_WIDTH / 2.0 + 2.0), 0, -24.0)
+	operator["phase"] = 0.0
+	operator["camera"] = true
+	officials.append(operator)
+	for side in [-1.0, 1.0]:
+		var net = Vector3(side * 34.6, 0, -80.0)
+		for z in [-1.4, 1.4]:
+			_box(self, net + Vector3(0, 1.4, z), Vector3(0.1, 2.8, 0.1), Color("2a2f3a"))
+		_box(self, net + Vector3(0, 2.8, 0), Vector3(0.1, 0.1, 2.9), Color("2a2f3a"))
+		var mesh_panel = _box(self, net + Vector3(0, 1.45, 0), Vector3(0.03, 2.7, 2.7), Color(0.05, 0.06, 0.08, 0.55))
+		mesh_panel.material_override = _material(Color(0.05, 0.06, 0.08, 0.55), false, true)
+		_box(self, net + Vector3(side * 0.6, 0.06, 0), Vector3(1.2, 0.12, 2.8), Color("1d2333"))
+		var cart = Vector3(side * 35.6, 0, -101.0)
+		_box(self, cart + Vector3(0, 0.62, 0), Vector3(1.5, 0.5, 2.8), Color("2c3a52"))
+		_box(self, cart + Vector3(0, 1.0, -0.65), Vector3(1.4, 0.42, 0.9), Color("e9edf2"))
+		_box(self, cart + Vector3(0, 1.9, 0.0), Vector3(1.5, 0.08, 2.0), Color("2c3a52"))
+		for corner in [Vector3(-0.68, 0, -0.9), Vector3(0.68, 0, -0.9), Vector3(-0.68, 0, 0.9), Vector3(0.68, 0, 0.9)]:
+			_box(self, cart + corner + Vector3(0, 1.45, 0), Vector3(0.06, 0.9, 0.06), Color("15171d"))
+			_box(self, cart + corner + Vector3(0, 0.28, 0), Vector3(0.22, 0.56, 0.56), Color("101218"))
+		_box(self, cart + Vector3(0, 0.7, -1.41), Vector3(1.2, 0.14, 0.03), Color("ffe08a"), true)
+		_box(self, cart + Vector3(0, 1.12, 1.15), Vector3(1.2, 0.4, 0.3), Color("2c3a52"))
+
+
+func _figure(parent: Node3D, shirt: Color, pants: Color, socks: Color, hat: Color, skin: Color, stripes: bool) -> Dictionary:
+	var root = Node3D.new()
+	parent.add_child(root)
+	var dark = Color("111318")
+	_box(root, Vector3(0, 1.3, 0), Vector3(0.58, 0.62, 0.34), shirt)
+	if stripes:
+		for x in [-0.21, -0.07, 0.07, 0.21]:
+			_box(root, Vector3(x, 1.3, 0), Vector3(0.05, 0.63, 0.35), dark)
+	_box(root, Vector3(0, 0.98, 0), Vector3(0.56, 0.1, 0.32), dark)
+	_box(root, Vector3(0, 1.79, 0), Vector3(0.36, 0.36, 0.36), skin)
+	_box(root, Vector3(0, 2.0, 0), Vector3(0.4, 0.1, 0.4), hat)
+	_box(root, Vector3(0, 1.97, -0.27), Vector3(0.32, 0.04, 0.16), hat)
+	for x in [-0.08, 0.08]:
+		_box(root, Vector3(x, 1.82, -0.185), Vector3(0.06, 0.05, 0.01), dark)
+	var parts = {"root": root}
+	for side in [-1, 1]:
+		var side_name = "left" if side < 0 else "right"
+		var arm = Node3D.new()
+		arm.position = Vector3(side * 0.4, 1.56, 0)
+		root.add_child(arm)
+		_box(arm, Vector3(0, -0.12, 0), Vector3(0.19, 0.26, 0.21), shirt)
+		if stripes:
+			_box(arm, Vector3(0, -0.12, 0), Vector3(0.2, 0.05, 0.22), dark)
+		_box(arm, Vector3(0, -0.4, 0), Vector3(0.17, 0.32, 0.18), skin)
+		parts[side_name + "_arm"] = arm
+		var leg = Node3D.new()
+		leg.position = Vector3(side * 0.15, 0.94, 0)
+		root.add_child(leg)
+		_box(leg, Vector3(0, -0.25, 0), Vector3(0.24, 0.5, 0.26), pants)
+		_box(leg, Vector3(0, -0.66, 0), Vector3(0.22, 0.32, 0.22), socks)
+		_box(leg, Vector3(0, -0.88, -0.05), Vector3(0.24, 0.12, 0.34), dark)
+		parts[side_name + "_leg"] = leg
+	_blob(root, 1.2, 0.5)
+	return parts
+
+
+func _build_cheerleaders(home: Dictionary, away: Dictionary) -> void:
+	cheerleaders.clear()
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 4242
+	for side in [-1.0, 1.0]:
+		var team: Dictionary = home if side < 0.0 else away
+		var top: Color = team["primary"]
+		var skirt: Color = team["secondary"]
+		var pom: Color = team["secondary"].lightened(0.25)
+		for end_z in [-5.0, -115.0]:
+			for i in 5:
+				var root = Node3D.new()
+				sideline_root.add_child(root)
+				var spot = Vector3(side * (28.6 + float(i % 2) * 1.3 + rng.randf_range(-0.2, 0.2)), 0, end_z + (float(i) - 2.0) * 1.35)
+				root.position = spot
+				root.rotation.y = -side * PI / 2.0 + rng.randf_range(-0.25, 0.25)
+				var skin: Color = SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)]
+				var hair: Color = HAIR_COLORS[rng.randi_range(0, HAIR_COLORS.size() - 1)]
+				_box(root, Vector3(0, 1.3, 0), Vector3(0.48, 0.44, 0.28), top)
+				_box(root, Vector3(0, 1.36, -0.145), Vector3(0.3, 0.06, 0.01), skirt)
+				_box(root, Vector3(0, 0.96, 0), Vector3(0.56, 0.26, 0.36), skirt)
+				_box(root, Vector3(0, 0.96, 0), Vector3(0.57, 0.04, 0.37), Color("f4f4f2"))
+				_box(root, Vector3(0, 1.72, 0), Vector3(0.34, 0.34, 0.34), skin)
+				_box(root, Vector3(0, 1.9, 0.02), Vector3(0.36, 0.12, 0.36), hair)
+				_box(root, Vector3(0, 1.72, 0.2), Vector3(0.14, 0.34, 0.1), hair)
+				_box(root, Vector3(0, 1.94, 0.19), Vector3(0.18, 0.06, 0.04), skirt)
+				var arms: Array = []
+				for arm_side in [-1.0, 1.0]:
+					var arm = Node3D.new()
+					arm.position = Vector3(arm_side * 0.31, 1.5, 0)
+					root.add_child(arm)
+					_box(arm, Vector3(0, -0.28, 0), Vector3(0.14, 0.5, 0.14), skin)
+					_box(arm, Vector3(0, -0.58, 0), Vector3(0.36, 0.3, 0.36), pom, true)
+					arms.append(arm)
+				var legs: Array = []
+				for leg_side in [-1.0, 1.0]:
+					var leg = Node3D.new()
+					leg.position = Vector3(leg_side * 0.12, 0.84, 0)
+					root.add_child(leg)
+					_box(leg, Vector3(0, -0.36, 0), Vector3(0.15, 0.68, 0.16), skin)
+					_box(leg, Vector3(0, -0.78, -0.04), Vector3(0.18, 0.14, 0.28), Color("f4f4f2"))
+					legs.append(leg)
+				_blob(sideline_root, 1.1, 0.45).position = Vector3(spot.x, 0.088, spot.z)
+				cheerleaders.append({
+					"root": root, "arms": arms, "legs": legs, "base": spot,
+					"phase": rng.randf_range(0.0, TAU), "routine": rng.randi_range(0, 2),
+				})
+
+
+func _animate_figure(figure: Dictionary, target: Vector3, look: Vector3, delta: float, rate: float) -> void:
+	var root: Node3D = figure["root"]
+	var previous: Vector3 = figure["pos"]
+	var next = previous.lerp(target, clampf(delta * rate, 0.0, 1.0))
+	figure["pos"] = next
+	root.position = next
+	var speed = next.distance_to(previous) / maxf(delta, 0.001)
+	var heading = look - next
+	if Vector2(heading.x, heading.z).length() > 0.3:
+		var yaw = atan2(-heading.x, -heading.z)
+		root.rotation.y = lerp_angle(root.rotation.y, yaw, clampf(delta * 6.0, 0.0, 1.0))
+	var stride = minf(speed / 5.0, 1.0)
+	var swing = sin(elapsed * (7.0 + speed * 0.8) + figure["phase"]) * stride * 0.75
+	figure["left_leg"].rotation.x = swing
+	figure["right_leg"].rotation.x = -swing
+	if figure.has("camera"):
+		figure["left_arm"].rotation.x = -1.2
+		figure["right_arm"].rotation.x = -1.4
+	else:
+		figure["left_arm"].rotation.x = -swing * 0.8
+		figure["right_arm"].rotation.x = swing * 0.8
+
+
+func _update_game_day(delta: float) -> void:
+	if delta <= 0.0:
+		delta = 1.0
+	var los: float = game.los
+	var ball2: Vector2 = game.ball_position()
+	var ball3 = Vector3(ball2.x, 0, -ball2.y)
+	var live: bool = game.phase == "live"
+	var advance = maxf(0.0, ball2.y - los) if live else 0.0
+	for figure in officials:
+		var target: Vector3
+		if figure.has("camera"):
+			var track = ball2.y if live else los
+			target = Vector3(-(FIELD_WIDTH / 2.0 + 2.0), 0, -clampf(track, -5.0, 115.0))
+		else:
+			var base: Vector2 = figure["base"]
+			var x = base.x
+			var y = los + base.y + advance * 0.85
+			if live and not figure.get("sideline", false):
+				x = lerpf(base.x, ball2.x, figure["follow"] * 0.5)
+			if figure.get("sideline", false):
+				y = ball2.y if live else los
+			target = Vector3(clampf(x, -(FIELD_WIDTH / 2.0 + 2.0), FIELD_WIDTH / 2.0 + 2.0), 0, -clampf(y, -8.0, 128.0))
+		_animate_figure(figure, target, ball3 if live else Vector3(target.x * 0.2, 0, -los), delta, 2.4 if live else 1.4)
+	var stick_y = [game.first_down - 10.0, game.first_down, los]
+	for i in chain_sticks.size():
+		var crew: Dictionary = chain_sticks[i]
+		var target = Vector3(FIELD_WIDTH / 2.0 + 0.95, 0, -clampf(stick_y[i], 0.0, 120.0))
+		_animate_figure(crew, target, Vector3(0, 0, target.z), delta, 1.6)
+	var first_stick: Vector3 = chain_sticks[0]["pos"]
+	var second_stick: Vector3 = chain_sticks[1]["pos"]
+	var chain_x = FIELD_WIDTH / 2.0 + 0.95
+	var chain_len = maxf(0.1, absf(second_stick.z - first_stick.z))
+	chain_links.transform = Transform3D(Basis().scaled(Vector3(0.04, 0.04, chain_len)), Vector3(chain_x - 0.3, 0.55, (first_stick.z + second_stick.z) * 0.5))
+	down_box_label.text = str(clampi(game.down, 1, 4))
+	var energy_target = 0.0
+	if live and game.controlled >= 0:
+		var runner: Dictionary = game.players[game.controlled]
+		var aim = Vector3(runner["pos"].x, 0.0, -runner["pos"].y)
+		follow_spot.position = follow_spot.position.lerp(aim + Vector3(-20.0, 46.0, 14.0), clampf(delta * 4.0, 0.0, 1.0))
+		follow_spot.look_at(aim, Vector3.UP)
+		energy_target = 5.5
+	follow_spot.light_energy = lerpf(follow_spot.light_energy, energy_target, clampf(delta * 3.0, 0.0, 1.0))
+	var flash_rate = 0.04 + excitement * 0.09
+	if light_show_time > 0.0:
+		flash_rate = 0.5
+	flash_material.set_shader_parameter("rate", flash_rate)
+	if light_show_time > 0.0:
+		light_show_time = maxf(0.0, light_show_time - delta)
+		var beat = int(elapsed * 7.0)
+		for i in stadium_spots.size():
+			var entry: Dictionary = stadium_spots[i]
+			var light: SpotLight3D = entry["light"]
+			var on_team = (beat + i) % 2 == 0
+			light.light_color = light_show_color.lightened(0.1) if on_team else Color("fff4d8")
+			var strobe = 0.08 if (beat + i) % 3 == 0 else 1.25
+			light.light_energy = 13.0 * strobe * (0.7 + 0.3 * absf(sin(elapsed * 11.0 + float(i) * 1.3)))
+		flare_material.set_shader_parameter("tint", light_show_color.lightened(0.35) if beat % 2 == 0 else Color("ffffff"))
+		flare_material.set_shader_parameter("strength", 0.7 + 0.6 * absf(sin(elapsed * 11.0)))
+		var world: Environment = environment.environment
+		var pulse = absf(sin(elapsed * 9.0))
+		var fade_out = clampf(light_show_time / 0.8, 0.0, 1.0)
+		world.fog_light_color = Color("16223a").lerp(light_show_color, (0.35 + 0.35 * pulse) * fade_out)
+		world.ambient_light_color = Color("65708e").lerp(light_show_color.lightened(0.2), 0.6 * pulse * fade_out)
+		world.ambient_light_energy = 0.22 + 0.5 * pulse * fade_out
+		world.adjustment_brightness = 1.0 + (0.16 if beat % 2 == 0 else -0.1) * fade_out
+		if light_show_time <= 0.0:
+			for entry in stadium_spots:
+				entry["light"].light_color = entry["color"]
+				entry["light"].light_energy = 13.0
+			flare_material.set_shader_parameter("tint", Color(0.86, 0.92, 1.0))
+			flare_material.set_shader_parameter("strength", 1.0)
+			world.fog_light_color = Color("16223a")
+			world.ambient_light_color = Color("65708e")
+			world.ambient_light_energy = 0.22
+			world.adjustment_brightness = 1.0
+	var hype = clampf(excitement, 0.0, 1.6)
+	for cheer in cheerleaders:
+		var phase: float = cheer["phase"]
+		var root: Node3D = cheer["root"]
+		var bounce = maxf(0.0, sin(elapsed * (4.0 + hype * 2.0) + phase))
+		var base: Vector3 = cheer["base"]
+		root.position.y = base.y + bounce * (0.06 + hype * 0.22)
+		var arms: Array = cheer["arms"]
+		var legs: Array = cheer["legs"]
+		match cheer["routine"]:
+			0:
+				arms[0].rotation.z = -2.6 * bounce - 0.3
+				arms[1].rotation.z = 2.6 * bounce + 0.3
+			1:
+				arms[0].rotation.z = -1.4 - sin(elapsed * 6.0 + phase) * 1.1
+				arms[1].rotation.z = 1.4 - sin(elapsed * 6.0 + phase) * 1.1
+			_:
+				arms[0].rotation.x = -3.0 * bounce
+				arms[1].rotation.x = -3.0 * maxf(0.0, sin(elapsed * (4.0 + hype * 2.0) + phase + PI))
+		legs[0].rotation.x = -bounce * hype * 0.5
+		legs[1].rotation.x = bounce * hype * 0.2
 
 
 func _build_ball() -> void:
@@ -1686,6 +2190,8 @@ func _update_effects(delta: float) -> void:
 			confetti.restart()
 			confetti.emitting = true
 			_launch_fireworks(game.home["primary"], game.away["primary"])
+			light_show_time = 4.5
+			light_show_color = game.home["primary"]
 			event_light.light_color = Color("ffdb43")
 			event_light.omni_range = 22.0
 			event_light_time = 0.45
