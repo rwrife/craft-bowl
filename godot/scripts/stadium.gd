@@ -151,7 +151,7 @@ void fragment() {
 	}
 	light += pool(p, vec2(-7.5, -88.0), vec2(15.0, 14.0)) + pool(p, vec2(7.5, -88.0), vec2(15.0, 14.0));
 	light += pool(p, vec2(0.0, -38.0), vec2(14.0, 12.0)) * 0.7;
-	float f = 0.6 + 0.45 * clamp(light, 0.0, 1.0);
+	float f = 0.58 + 0.3 * clamp(light, 0.0, 1.0);
 	f *= 1.0 - 0.16 * smoothstep(27.0, 46.0, abs(p.x));
 	f *= 1.0 - 0.12 * smoothstep(-122.0, -150.0, p.y);
 	ALBEDO = vec3(0.0, 0.004, 0.012);
@@ -439,7 +439,7 @@ func _material(color: Color, emissive: bool = false, transparent: bool = false, 
 	material.roughness = 0.85
 	if kind == "grass":
 		material.roughness = 0.58
-		material.metallic_specular = 0.62
+		material.metallic_specular = 0.5
 	if not emissive and not transparent and kind != "":
 		_apply_pixels(material, kind)
 	if emissive:
