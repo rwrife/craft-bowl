@@ -139,6 +139,7 @@ func _run() -> void:
 		"same seed and inputs reproduce the same simulation")
 
 	_test_defense_and_kicks()
+	_test_defensive_mobility()
 
 	_finish()
 
@@ -297,6 +298,46 @@ func _test_defense_and_kicks() -> void:
 	check(same_selected.user_has_ball() and same_selected.controlled == defender and same_selected.control_assist_ticks == 0,
 		"catching an interception clears assistance even when the active player does not change")
 
+	var tracking = fresh()
+	snap_play(tracking, "spread_pass")
+	var next_defender = tracking._player_index("laneLeft")
+	for p in tracking.players:
+		p["down"] = p["id"] not in [pursuer, next_defender, defender]
+	tracking.players[pursuer]["pos"] = Vector2(0, 40)
+	tracking.players[next_defender]["pos"] = Vector2(0, 30)
+	tracking.players[defender]["pos"] = Vector2(0, 100)
+	tracking._start_return("interception", defender)
+	check(tracking.controlled == pursuer, "possession change immediately selects the closest teammate")
+	tracking.players[next_defender]["pos"] = Vector2(0, 50)
+	for unused in 59:
+		tracking.tick({})
+	check(tracking.controlled == pursuer and tracking.control_assist_ticks == 1 and
+		tracking.players[next_defender]["vel"].y > 0,
+		"closer teammates keep pursuing without switching before one second elapses")
+	tracking._control_ball()
+	check(tracking.controlled == pursuer, "catch or recovery selection cannot bypass the switch cooldown")
+	tracking.tick({})
+	check(tracking.controlled == pursuer and tracking.control_assist_ticks == 0,
+		"the current defender stays selected for the full sixty-tick interval")
+	tracking.tick({})
+	check(tracking.controlled == next_defender and tracking.control_assist_ticks == 59,
+		"control automatically moves to the closest teammate once the interval expires")
+	var switch_tick = tracking.tick_count
+	tracking.players[pursuer]["pos"] = tracking.ball_position() + Vector2(0, -50)
+	tracking.players[next_defender]["pos"] = tracking.ball_position() + Vector2(0, -65)
+	for unused in 59:
+		tracking.tick({})
+	check(tracking.controlled == next_defender, "the next automatic switch also respects the cooldown")
+	tracking.tick({})
+	check(tracking.controlled == pursuer and tracking.tick_count - switch_tick == 60,
+		"repeated closest-ball switches are separated by exactly one second")
+	tracking.players[pursuer]["down"] = true
+	tracking.control_assist_ticks = 0
+	tracking._update_defensive_control()
+	check(tracking.controlled == next_defender, "closest-ball tracking excludes downed teammates")
+	tracking.setup_play(35, 1, 45)
+	check(tracking.control_assist_ticks == 0, "a new play clears the automatic switch cooldown")
+
 	var stop = fresh()
 	stop.setup_play(44, 4, 49)
 	stop._snap()
@@ -373,8 +414,23 @@ func _test_defense_and_kicks() -> void:
 	check(not fumble.offense_home and fumble.los == 72, "fumble return sets the next possession spot")
 	fumble.offense_index = play_index("qb_keeper")
 	fumble._snap()
+	var diving_defender = fumble.controlled
 	fumble.tick({"buttons": ["dive"]})
-	check(fumble.players[fumble.controlled]["dive_ticks"] > 0, "controlled defender can dive/tackle")
+	check(fumble.players[diving_defender]["dive_ticks"] > 0, "controlled defender can dive/tackle")
+	check(fumble.controlled != diving_defender and
+		fumble.controlled == fumble._nearest_home(fumble.ball_position()),
+		"diving immediately transfers defensive control to the closest non-diving teammate")
+	var second_diver = fumble.controlled
+	check(fumble.control_assist_ticks == 60, "dive handoff starts a fresh automatic switch interval")
+	fumble.tick({"buttons": ["dive"]})
+	check(fumble.players[second_diver]["dive_ticks"] > 0 and fumble.controlled != second_diver and
+		fumble.controlled != diving_defender and fumble.control_assist_ticks == 60,
+		"another dive bypasses the interval immediately and excludes both diving teammates")
+	var offensive_dive = fresh()
+	snap_play(offensive_dive, "qb_keeper")
+	var offensive_runner = offensive_dive.controlled
+	offensive_dive.tick({"buttons": ["dive"]})
+	check(offensive_dive.controlled == offensive_runner, "offensive dives keep control on the ball carrier")
 
 	var full_match = fresh(900, false)
 	var possessions = {}
@@ -397,6 +453,57 @@ func _test_defense_and_kicks() -> void:
 	health._set_offense(true)
 	check(health.players[0]["health"] > 0.2 and health.players[0]["health"] < 1.0,
 		"returning players retain their health and regenerate while on the sideline")
+
+
+func _test_defensive_mobility() -> void:
+	var boosted = fresh()
+	var baseline = fresh()
+	var defender = boosted._player_index("cbL")
+	var intents: Array = []
+	for unused in boosted.players.size():
+		intents.append({})
+	for sim in [boosted, baseline]:
+		sim.next_offense_home = false
+		sim.setup_play(35, 1, 45)
+		for p in sim.players:
+			p["down"] = p["id"] != defender
+		sim.players[defender]["pos"] = Vector2(0, 40)
+	boosted.controlled = defender
+	baseline.controlled = -1
+	intents[defender] = {"move": Vector2.DOWN, "turbo": true}
+	for unused in 90:
+		boosted._step_players(intents)
+		baseline._step_players(intents)
+	check(is_equal_approx(boosted.players[defender]["vel"].length() /
+		baseline.players[defender]["vel"].length(), 1.10),
+		"user defensive turbo is ten percent faster than unchanged CPU turbo")
+	check(is_equal_approx(boosted.players[defender]["turbo"], baseline.players[defender]["turbo"]),
+		"defensive turbo boost retains the same stamina cost")
+	for sim in [boosted, baseline]:
+		sim.players[defender]["vel"] = Vector2.ZERO
+	intents[defender] = {"move": Vector2.DOWN}
+	for unused in 90:
+		boosted._step_players(intents)
+		baseline._step_players(intents)
+	check(boosted.players[defender]["vel"].is_equal_approx(baseline.players[defender]["vel"]),
+		"ordinary defensive running speed is unchanged")
+	for sim in [boosted, baseline]:
+		sim.players[defender]["pos"] = Vector2(0, 40)
+		sim.players[defender]["vel"] = Vector2.ZERO
+		sim.players[defender]["facing"] = 0.0
+	intents[defender] = {"dive": true}
+	boosted._step_players(intents)
+	baseline._step_players(intents)
+	check(boosted.players[defender]["dive_ticks"] == baseline.players[defender]["dive_ticks"],
+		"longer defensive dive preserves the original dive duration")
+	intents[defender] = {}
+	for unused in 30:
+		boosted._step_players(intents)
+		baseline._step_players(intents)
+	var boosted_distance: float = boosted.players[defender]["pos"].y - 40.0
+	var baseline_distance: float = baseline.players[defender]["pos"].y - 40.0
+	check(is_equal_approx(boosted_distance / baseline_distance, 1.15),
+		"user defensive dive travels fifteen percent farther than the unchanged CPU dive")
 
 
 func _finish() -> void:

@@ -6,6 +6,8 @@ const GOAL_LINE = 110.0
 const OWN_GOAL = 10.0
 const KICKOFF = 35.0
 const RADIUS = 0.42
+const DEFENSIVE_TURBO_BONUS = 1.10
+const DEFENSIVE_DIVE_BONUS = 1.15
 const LANES = ["left", "center", "right", "backfield"]
 const LANE_POSITIONS = {
 	"left": "laneLeft", "center": "laneCenter", "right": "laneRight", "backfield": "rb",
@@ -333,6 +335,7 @@ func _step_live(input: Dictionary) -> void:
 	var possession_stats = home_stats if user_has_ball() else away_stats
 	possession_stats["seconds"] += used
 	series_stats["seconds"] += used
+	_update_defensive_control()
 	var intents = _ai_intents()
 	if loose_ticks > 0:
 		for p in players:
@@ -356,6 +359,8 @@ func _step_live(input: Dictionary) -> void:
 		_handle_qb_buttons(input.get("buttons", []))
 	_update_exertion()
 	_step_players(intents)
+	if not user_has_ball() and controlled >= 0 and players[controlled]["dive_ticks"] > 0:
+		_set_controlled(_nearest_home(ball_position()), true)
 	_step_ball()
 	if phase != "live":
 		return
@@ -636,6 +641,8 @@ func _step_players(intents: Array) -> void:
 		if intent.get("dive", false) and p["recover"] == 0:
 			var direction = Vector2(sin(p["facing"]), cos(p["facing"]))
 			var speed = maxf(p["vel"].length(), 4.0) * lerpf(0.8, 1.0, p["health"]) + 1.5 + 2.0 * _ability(p)
+			if p["id"] == controlled and not user_has_ball():
+				speed *= DEFENSIVE_DIVE_BONUS
 			p["vel"] = direction * speed
 			p["dive_ticks"] = 16 + int(10.0 * _ability(p))
 			continue
@@ -670,6 +677,8 @@ func _step_players(intents: Array) -> void:
 			lerpf(float(curves["exhaustedSpeedFactor"]), 1.0, p["health"])
 		if p["turbo_active"]:
 			vmax *= curves["turboSpeedMultiplier"]
+			if p["id"] == controlled and not user_has_ball():
+				vmax *= DEFENSIVE_TURBO_BONUS
 		if p["engaged"] > 0:
 			vmax *= 0.7 if carrying else 0.45
 		if recovering:
@@ -1173,7 +1182,7 @@ func _nearest_home(spot: Vector2) -> int:
 	var nearest = -1
 	var distance = INF
 	for p in players:
-		if p["offense"] != offense_home or p["down"]:
+		if p["offense"] != offense_home or p["down"] or p["dive_ticks"] > 0:
 			continue
 		var d: float = p["pos"].distance_squared_to(spot)
 		if d < distance:
@@ -1190,10 +1199,19 @@ func _control_flight(target: int) -> void:
 	_set_controlled(-1 if offense_home else _nearest_home(players[target]["pos"] + players[target]["vel"] * flight["duration"]))
 
 
-func _set_controlled(index: int) -> void:
+func _update_defensive_control() -> void:
+	if user_has_ball() or control_assist_ticks > 0:
+		return
+	if runner_phase or return_play or kickoff_return or ball_state in ["flight", "loose"]:
+		_set_controlled(_nearest_home(ball_position()))
+
+
+func _set_controlled(index: int, immediate: bool = false) -> void:
 	if user_has_ball():
 		control_assist_ticks = 0
 	elif index != controlled:
+		if control_assist_ticks > 0 and not immediate:
+			return
 		control_assist_ticks = 60 if index >= 0 else 0
 	controlled = index
 

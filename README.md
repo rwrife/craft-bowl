@@ -77,9 +77,14 @@ Opponent possessions are played live, not fast-forwarded. Select **Rush the QB**
 defender nearest the projected receiver on a pass, and switch to the nearest teammate when the ball
 changes hands. Defense has turbo, dive/tackle, and jump/block. Interceptions and recovered fumbles
 can be returned, including for touchdowns; the return's final spot sets the next possession.
+Once the ball leaves the CPU quarterback or possession changes, defensive control keeps tracking
+the teammate nearest the ball, with at least one second between automatic switches.
 After an automatic switch on defense, the newly active player follows AI pursuit for one second
 before stick/keyboard direction takes over. Turbo, dive/tackle, and jump remain available during
 that transition; other defenders continue their coverage and pursuit.
+The user-controlled defender has 10% faster turbo and 15% more dive travel; CPU defenders and
+offensive movement are unchanged. Diving immediately transfers defensive control to the next
+closest available teammate, bypassing the switch delay and excluding players already diving.
 
 On fourth down at the **opponent's 40 or closer**, **Kick field goal** (F / controller X) displays
 distance and success chance. Distance includes 17 yards for the snap and end zone; longer kicks
