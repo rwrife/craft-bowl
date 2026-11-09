@@ -49,7 +49,10 @@ rows use pixel billboards, with each fan's detail tier randomly dithered across 
 and `Packages/`.
 
 Open `project.godot` in Godot 4.4.1 or later and run the project. The Godot project uses the
-Compatibility renderer and a 1280×720 landscape viewport. To run the deterministic gameplay tests:
+Compatibility renderer and a 1280×720 landscape viewport. On desktop, the game starts centered on its
+current display in the largest exact 16:9 window that fits within 75% of both the display's width and
+height (1440×810 on a 1920×1080 display). Mobile, headless, and fullscreen launches are unchanged.
+To run the deterministic gameplay tests:
 
 ```sh
 godot --headless --path . --script res://godot/tests/test_simulation.gd
