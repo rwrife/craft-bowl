@@ -303,8 +303,9 @@ func set_game(simulation) -> void:
 		last_clock_text = ""
 		_build_dressing()
 	for p in game.players:
-		var team: Dictionary = game.home if p["offense"] else game.away
-		player_nodes.append(_make_player(p, team, not p["offense"]))
+		var is_home: bool = p["offense"] == game.offense_home
+		var team: Dictionary = game.home if is_home else game.away
+		player_nodes.append(_make_player(p, team, not is_home))
 	_build_sideline(game.home, -1.0)
 	_build_sideline(game.away, 1.0)
 	_build_cheerleaders(game.home, game.away)
@@ -348,7 +349,8 @@ func update_view(delta: float) -> void:
 		var p: Dictionary = game.players[i]
 		var parts: Dictionary = player_nodes[i]
 		var root: Node3D = parts["root"]
-		root.position = Vector3(p["pos"].x, 0, -p["pos"].y)
+		var jump_height = sin(PI * float(p["jump_ticks"]) / 24.0) * 1.15
+		root.position = Vector3(p["pos"].x, jump_height, -p["pos"].y)
 		root.rotation.y = -p["facing"]
 		root.rotation.x = -1.15 if p["down"] or p["dive_ticks"] > 0 else 0.0
 		var speed = p["vel"].length()
@@ -357,6 +359,9 @@ func update_view(delta: float) -> void:
 		parts["right_leg"].rotation.x = -swing
 		parts["left_arm"].rotation.x = -swing * 0.8
 		parts["right_arm"].rotation.x = swing * 0.8
+		if p["jump_ticks"] > 0:
+			parts["left_arm"].rotation.x = PI
+			parts["right_arm"].rotation.x = PI
 		parts["marker"].visible = game.phase == "live" and game.controlled == i
 		var shadow: MeshInstance3D = parts["shadow"]
 		shadow.position = Vector3(root.position.x, 0.088, root.position.z)

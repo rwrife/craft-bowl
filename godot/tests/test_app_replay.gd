@@ -42,6 +42,9 @@ func _run() -> void:
 		"keyboard movement and action bindings are registered")
 	check(has_controller_binding("move_up") and has_controller_binding("pass_left") and
 		has_controller_binding("turbo"), "gamepad movement, buttons, and trigger are registered")
+	check(has_controller_binding("jump") and has_keyboard_binding("jump") and has_controller_binding("field_goal"),
+		"defensive jump and kicking controls are registered")
+	check(app.game.phase == "kickoff_ready" and not app.ui.pad.enabled, "opening kickoff shows a ready modal")
 	var sideline_player_groups = 0
 	for group in app.stadium.sideline_groups:
 		if group["members"].size() == 32:
@@ -75,12 +78,15 @@ func _run() -> void:
 	touch.pressed = false
 	pad._input(touch)
 	var existing_ticks = app.game_inputs.size()
+	app.autopilot = true
 	app.toggle_recording()
-	for unused in 240:
+	for unused in 6000:
 		app._physics_process(Simulation.DT + 0.00001)
 	app.toggle_recording()
 	var recorded_ticks = app.saved_recording.get("inputs", []).size()
-	check(recorded_ticks == existing_ticks + 240, "recording stores a complete tick history")
+	check(recorded_ticks == existing_ticks + 6000, "recording stores a complete live-match tick history")
+	check(app.game.play_number > 3 and app.game.home_stats["pass_attempts"] + app.game.home_stats["rush_attempts"] > 0,
+		"autopilot plays actual scrimmage possessions after the kickoff")
 	app.verify_recording()
 	check(app.replay_status == "verified", "headless re-simulation verifies the final state")
 	app.play_recording()
@@ -95,6 +101,36 @@ func _run() -> void:
 	app.game._end_play("touchdown", Vector2(0, 110))
 	app.stadium.update_view(Simulation.DT)
 	check(app.stadium.confetti.emitting, "touchdowns trigger a confetti burst")
+	app.autopilot = false
+	app.paused = false
+	app.game._set_offense(false)
+	app.game.setup_play(50, 1, 60)
+	app.game.choose(1)
+	app.game.offense_index = 0
+	app.game._snap()
+	app.stadium.set_game(app.game)
+	app.ui.refresh_game()
+	check(app.ui.pad.actions == ["dive", "jump", "turbo"], "touch defense exposes tackle, jump and turbo")
+	var jump_button = InputEventJoypadButton.new()
+	jump_button.button_index = JOY_BUTTON_Y
+	jump_button.pressed = true
+	app.pending_actions.clear()
+	app._input(jump_button)
+	check(app.pending_actions == ["jump"], "defense Y button jumps instead of handing off")
+	app.game._set_offense(true)
+	app.game.setup_play(70, 4, 80)
+	app.ui.refresh_game()
+	var kick_button = InputEventJoypadButton.new()
+	kick_button.button_index = JOY_BUTTON_X
+	kick_button.pressed = true
+	app.pending_actions.clear()
+	app._input(kick_button)
+	check(app.pending_actions == ["field_goal"], "fourth-down X button kicks instead of selecting a pass")
+	app.game.setup_play(69, 4, 79)
+	kick_button.button_index = JOY_BUTTON_B
+	app.pending_actions.clear()
+	app._input(kick_button)
+	check(app.pending_actions == ["punt"], "fourth-down B button punts instead of selecting a pass")
 	app.queue_free()
 	app = null
 	await process_frame

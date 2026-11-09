@@ -69,7 +69,7 @@ func _draw() -> void:
 	var yellow = Color(1, 0.85, 0.2, opacity)
 	var orange = Color(1, 0.55, 0.2, opacity)
 	var chalk = Color(0.9, 0.93, 0.95, 0.8 * opacity)
-	for lane in Simulation.LANES:
+	for lane in Simulation.LANES if play.has("slots") else []:
 		var assignment: Dictionary = play["slots"][lane]
 		var start: Vector2 = Simulation.FORMATION[Simulation.LANE_POSITIONS[lane]]
 		if assignment["role"] == "target":
@@ -87,8 +87,19 @@ func _draw() -> void:
 			_stroke([start, Vector2(game._lane_x(lane) * 0.3, 1.5)], area, chalk, 1.5, true)
 		else:
 			_stroke([start, start + Vector2(0, -1)], area, chalk, 1.5, true)
-	if play["kind"] == "keeper":
+	if play.get("kind", "") == "keeper":
 		_stroke([Vector2(0, -4.5), Vector2(1.5, -1.5), Vector2(2.5, 7)], area, orange, 2.5)
+	if play.has("assignments"):
+		for position in play["assignments"]:
+			var start: Vector2 = Simulation.FORMATION[position]
+			var assignment: String = play["assignments"][position]
+			var parts = assignment.split(":")
+			var end = Vector2(0, -4.5)
+			if parts[0] == "man":
+				end = Simulation.FORMATION[Simulation.LANE_POSITIONS[parts[1]]] + Vector2(0, 4)
+			elif parts[0] in ["zone", "deepZone"]:
+				end = Vector2(game._lane_x(parts[1]), 14 if parts[0] == "deepZone" else 7)
+			_stroke([start, end], area, orange if parts[0] == "rush" else yellow, 1.6)
 	for position in Simulation.FORMATION:
 		var p = _point(Simulation.FORMATION[position], area)
 		if position in game.data["format"]["offense"]:
@@ -104,6 +115,6 @@ func _draw() -> void:
 	draw_string(font, Vector2(10, 26), str(slot + 1), HORIZONTAL_ALIGNMENT_CENTER, 20, 16, Color.BLACK)
 	var name: String = play["name"].to_upper()
 	draw_string(font, Vector2(4, size.y - 23), name, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, 15, Color(1, 1, 1, opacity))
-	var kind: String = play["kind"].to_upper()
+	var kind: String = str(play.get("kind", "defense")).to_upper()
 	draw_string(font, Vector2(4, size.y - 7), kind, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, 11,
 		Color(0.75, 0.8, 0.8, opacity))

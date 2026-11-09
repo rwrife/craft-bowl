@@ -437,17 +437,17 @@ func refresh_game() -> void:
 	var distance = "Goal" if game.first_down >= Simulation.GOAL_LINE else str(maxi(1, int(round(game.first_down - game.los))))
 	var yard = int(round(game.los - Simulation.OWN_GOAL))
 	var spot = "MID" if yard == 50 else ("OWN %d" % yard if yard < 50 else "OPP %d" % (100 - yard))
-	down_label.text = "%s & %s  •  %s" % [ordinal, distance, spot]
+	down_label.text = "%s %s & %s • %s" % ["OFF" if game.offense_home else "DEF", ordinal, distance, spot]
+	if game.kickoff_return or game.phase == "kickoff_ready":
+		down_label.text = "KICKOFF"
 	message_label.text = game.message if game.message != "SELECT PLAY" else ""
-	if game.drive_runner != null:
-		message_label.text = "OPPONENT DRIVE..."
 	var player = game.players[game.controlled] if game.controlled >= 0 else {}
 	turbo_bar.value = player["turbo"] / player["capacity"] if not player.is_empty() else 0
 	health_bar.value = player["health"] if not player.is_empty() else 0
 	meters.visible = game.phase == "live"
 	var signature = "%s:%d:%s:%s:%s:%s:%s:%s" % [
-		game.phase, game.chosen, str(game.available_actions()), str(not game.drive_recap.is_empty()),
-		str(game.game_over), str(game.halftime), str(game.drive_runner != null),
+		game.phase, game.chosen, str(game.available_actions()), str(game.offense_home) + ":" + str(game.user_has_ball()),
+		str(game.game_over), str(game.halftime), str(game.kicking_actions()),
 		str(app.paused) + ":" + str(app.show_dev_overlay),
 	]
 	if signature != controls_signature:
@@ -459,36 +459,48 @@ func _rebuild_game_controls() -> void:
 	var game = app.game
 	_clear(cards)
 	_clear(modal)
-	var is_modal = not game.drive_recap.is_empty() or game.game_over or game.halftime or app.paused
+	var is_modal = game.phase == "kickoff_ready" or game.game_over or game.halftime or app.paused
 	var actions = []
-	if not is_modal and game.drive_runner == null:
+	if not is_modal:
 		if game.phase == "pre_snap":
 			if game.chosen >= 0:
 				actions = ["snap"]
-			cards.add_child(_label("SPD  /  END  /  ABL   x  HEALTH", 12, Color("e4edf4")))
+			cards.add_child(_label("SELECT OFFENSE" if game.offense_home else "SELECT DEFENSE", 14, Color("e4edf4")))
 			var row = HBoxContainer.new()
 			row.alignment = BoxContainer.ALIGNMENT_CENTER
 			row.add_theme_constant_override("separation", 8)
 			cards.add_child(row)
 			for i in game.choices.size():
 				var card = PlayCard.new()
-				card.configure(game, game.data["offense"][game.choices[i]], i, game.chosen == i,
+				var play: Dictionary = game.data["offense" if game.offense_home else "defense"][game.choices[i]].duplicate(true)
+				if not game.offense_home:
+					play["name"] = ["Rush the QB", "Man to Man", "Zone Defense"][i]
+				card.configure(game, play, i, game.chosen == i,
 					game.chosen >= 0 and game.chosen != i)
 				card.pressed.connect(app.select_play.bind(i))
 				row.add_child(card)
+			if game.offense_home:
+				for kick in game.kicking_actions():
+					var label = "PUNT (G / B)"
+					if kick == "field_goal":
+						label = "KICK FIELD GOAL  %d YD  %d%% (F / X)" % [game.field_goal_distance(), int(game.field_goal_chance() * 100)]
+					var button = _button(label, Color("2457d6"), Vector2(260, 34))
+					button.add_theme_font_size_override("font_size", 14)
+					button.pressed.connect(app.queue_action.bind(kick))
+					cards.add_child(button)
 		elif game.phase == "live":
 			actions = game.available_actions()
 			if actions.is_empty():
-				actions = ["dive", "turbo"]
-	pad.configure(not is_modal and game.drive_runner == null, actions)
+				actions = ["dive", "turbo"] if game.user_has_ball() else ["dive", "jump", "turbo"]
+	pad.configure(not is_modal, actions)
 	if app.paused:
 		_show_modal("PAUSED", ["The game is paused."], "RESUME", app.toggle_pause)
 	elif game.game_over:
 		_show_game_summary("FINAL", true)
 	elif game.halftime:
 		_show_game_summary("HALFTIME", false)
-	elif not game.drive_recap.is_empty():
-		_show_drive_recap(game.drive_recap)
+	elif game.phase == "kickoff_ready":
+		_show_kickoff_recap()
 
 
 func _show_modal(title: String, lines: Array, button_text: String, callback: Callable, extra: Callable = Callable()) -> void:
@@ -525,18 +537,20 @@ func _show_modal(title: String, lines: Array, button_text: String, callback: Cal
 	button.grab_focus()
 
 
-func _show_drive_recap(recap: Dictionary) -> void:
-	var ending = str(recap["ending"]).to_upper().replace("_", " ")
-	var lines = [
-		"%s   %s" % [str(recap["trigger"]).to_upper().replace("_", " "), ending],
-		"%d PLAYS   %+d YARDS   %d POINTS" % [recap["plays"], recap["yards"], recap["opponent_points"]],
-	]
-	var plays: Array = recap["play_by_play"]
-	for i in range(maxi(0, plays.size() - 4), plays.size()):
-		lines.append(plays[i])
-	var own_yard = int(recap["resume_los"] - 10)
-	lines.append("YOUR BALL  %s" % ("OWN %d" % own_yard if own_yard < 50 else "OPP %d" % (100 - own_yard)))
-	_show_modal(str(recap["team"]).to_upper() + " DRIVE", lines, "CONTINUE", app.queue_action.bind("snap"))
+func _show_kickoff_recap() -> void:
+	var game = app.game
+	var recap: Dictionary = game.series_recap
+	var lines = ["Return the kickoff from your own 10-yard line." if game.kickoff_home else "Stop the CPU kickoff return."]
+	var title = "OPENING KICKOFF" if recap.is_empty() else "%s SERIES  -  %s" % [recap["team"], recap["ending"]]
+	if not recap.is_empty():
+		var stats: Dictionary = recap["stats"]
+		lines = [
+			"%d PLAYS   %+d YARDS   %d POINTS" % [recap["plays"], recap["yards"], recap["points"]],
+			"PASS %d/%d   %d YDS     RUSH %d   %d YDS" % [stats["completions"], stats["pass_attempts"],
+				stats["pass_yards"], stats["rush_attempts"], stats["rush_yards"]],
+			"FIRST DOWNS %d   POSSESSION %d SEC" % [stats["first_downs"], int(stats["seconds"])],
+		]
+	_show_modal(title, lines, "READY TO RECEIVE" if game.kickoff_home else "READY TO KICK", app.queue_action.bind("snap"))
 
 
 func _show_game_summary(title: String, final_score: bool) -> void:
