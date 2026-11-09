@@ -10,6 +10,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$PublisherDisplayName,
+    [ValidateSet('x64', 'arm64')]
+    [string]$Architecture = 'x64',
     [string]$RepositoryRoot,
     [string]$WindowsSdkBin
 )
@@ -47,15 +49,40 @@ foreach ($tool in @($makeAppx, $makePri)) {
     if (-not (Test-Path $tool)) { throw "Missing Windows SDK tool: $tool" }
 }
 
-$export = Join-Path $RepositoryRoot 'build\windows'
+$suffix = if ($Architecture -eq 'x64') { '' } else { '-arm64' }
+$export = Join-Path $RepositoryRoot "build\windows$suffix"
 foreach ($file in @('BlockBowl.exe', 'BlockBowl.pck', 'App\BlockBowlLogo.obj')) {
     $path = Join-Path $export $file
     if (-not (Test-Path $path) -or (Get-Item $path).Length -eq 0) {
         throw "Export the Windows Store preset before packaging; missing $path."
     }
 }
+$executable = [System.IO.BinaryReader]::new(
+    [System.IO.File]::OpenRead((Join-Path $export 'BlockBowl.exe'))
+)
+try {
+    if ($executable.BaseStream.Length -lt 64 -or $executable.ReadUInt16() -ne 0x5A4D) {
+        throw 'Exported executable is missing a valid DOS header.'
+    }
+    $executable.BaseStream.Position = 0x3C
+    $peOffset = $executable.ReadUInt32()
+    if ($peOffset -lt 64 -or $peOffset -gt ($executable.BaseStream.Length - 6)) {
+        throw 'Exported executable has an invalid PE header offset.'
+    }
+    $executable.BaseStream.Position = $peOffset
+    if ($executable.ReadUInt32() -ne 0x00004550) {
+        throw 'Exported executable is missing a valid PE signature.'
+    }
+    $machine = $executable.ReadUInt16()
+    $expectedMachine = if ($Architecture -eq 'x64') { 0x8664 } else { 0xAA64 }
+    if ($machine -ne $expectedMachine) {
+        throw "Exported executable architecture does not match $Architecture (PE machine: 0x$($machine.ToString('X4')))."
+    }
+}
+finally { $executable.Dispose() }
+
 $output = Join-Path $RepositoryRoot 'build\store'
-$staging = Join-Path $output 'package'
+$staging = Join-Path $output "package$suffix"
 if (Test-Path $staging) {
     throw "Package staging directory already exists: $staging. Remove it before rebuilding."
 }
@@ -94,17 +121,18 @@ $identity = $manifest.Package.Identity
 $identity.SetAttribute('Name', $IdentityName)
 $identity.SetAttribute('Publisher', $Publisher)
 $identity.SetAttribute('Version', $PackageVersion)
+$identity.SetAttribute('ProcessorArchitecture', $Architecture)
 $manifest.Package.Properties['PublisherDisplayName'].InnerText = $PublisherDisplayName
 $manifestPath = Join-Path $staging 'AppxManifest.xml'
 $manifest.Save($manifestPath)
 
-$priConfig = Join-Path $output 'priconfig.xml'
+$priConfig = Join-Path $output "priconfig$suffix.xml"
 & $makePri createconfig /cf $priConfig /dq en-US /o
 if ($LASTEXITCODE -ne 0) { throw 'MakePri configuration failed.' }
 & $makePri new /pr $staging /cf $priConfig /mn $manifestPath /of (Join-Path $staging 'resources.pri') /o
 if ($LASTEXITCODE -ne 0) { throw 'MakePri resource indexing failed.' }
 
-$package = Join-Path $output "BlockBowl_${PackageVersion}_x64.msix"
+$package = Join-Path $output "BlockBowl_${PackageVersion}_${Architecture}.msix"
 & $makeAppx pack /d $staging /p $package /h SHA256 /o
 if ($LASTEXITCODE -ne 0) { throw 'MakeAppx packaging or manifest validation failed.' }
 if (-not (Test-Path $package) -or (Get-Item $package).Length -eq 0) {
