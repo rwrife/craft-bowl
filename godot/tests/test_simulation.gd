@@ -152,8 +152,22 @@ func _test_defense_and_kicks() -> void:
 	var opening = fresh(123, false)
 	check(opening.phase == "kickoff_ready" and opening.kickoff_home, "game starts ready to receive a kickoff")
 	opening.tick({"buttons": ["snap"]})
-	check(opening.phase == "live" and opening.kickoff_return and opening.ball_position() == Vector2(0, 20),
-		"kickoff return begins on the receiving team's own ten")
+	check(opening.phase == "live" and opening.kickoff_return and opening.ball_state == "flight" and
+		opening.flight["to"] == Vector2(0, 20) and opening.carrier == -1,
+		"kickoff flies toward the receiving team's own ten before possession")
+	var kick_origin = opening.ball_position()
+	var kick_clock = opening.clock
+	var returner = opening._player_index("rb")
+	for unused in 45:
+		opening.tick({"move": Vector2.UP, "turbo": true, "buttons": ["dive"]})
+	check(opening.ball_position().y < kick_origin.y and opening.ball_height() > 1.15,
+		"kickoff ball visibly advances and arcs toward the returner")
+	check(opening.players[returner]["pos"] == Vector2(0, 20) and opening.clock == kick_clock,
+		"returner and game clock wait for the kickoff catch despite held input")
+	for unused in 46:
+		opening.tick({})
+	check(opening.ball_state == "held" and opening.caught and opening.ball_position() == Vector2(0, 20) and
+		opening.message == "CAUGHT! KICKOFF RETURN!", "kickoff catch visibly starts the return")
 	check(opening.controlled == opening.carrier, "user controls their kickoff returner")
 	opening._end_play("tackled", Vector2(0, 38))
 	settle(opening)
@@ -170,6 +184,10 @@ func _test_defense_and_kicks() -> void:
 		opening.tick({})
 	check(opening.phase == "kickoff_ready", "kickoff readiness waits for an explicit action")
 	opening.tick({"buttons": ["snap"]})
+	check(opening.ball_state == "flight" and opening.controlled == -1,
+		"CPU also waits for the animated kickoff catch")
+	for unused in 91:
+		opening.tick({})
 	check(not opening.offense_home and opening.controlled == opening._nearest_home(opening.ball_position()),
 		"CPU receives the next kickoff and nearest home defender is active")
 	var cpu_start = opening.ball_position()
@@ -204,6 +222,9 @@ func _test_defense_and_kicks() -> void:
 	opening._pass("left")
 	check(opening.controlled == opening._nearest_home(opening.flight["to"]) and opening.controlled >= 9,
 		"CPU pass switches to the home defender nearest the intended receiver")
+	check(opening.control_assist_ticks == 60 and
+		opening._ai_intents()[opening.controlled].get("move", Vector2.ZERO).length() > 0,
+		"newly selected pass defender keeps AI pursuit for one second")
 	opening.players[opening.controlled]["pos"] = opening.ball_position()
 	opening.players[opening.controlled]["jump_ticks"] = 24
 	opening.flight["peak"] = 0.1
@@ -220,6 +241,7 @@ func _test_defense_and_kicks() -> void:
 		"interception immediately switches user to nearest defender while CPU can return")
 	check(picked.home_stats["interceptions"] == 1 and picked.home_stats["turnovers"] == 1,
 		"interception is recorded once at the change of hands")
+	check(picked.control_assist_ticks == 60, "losing possession starts defensive control assistance")
 	picked._end_play("tackled", Vector2(-8, 60))
 	settle(picked)
 	check(not picked.offense_home and picked.los == 60 and picked.down == 1,
@@ -230,6 +252,7 @@ func _test_defense_and_kicks() -> void:
 	picked.players[defender]["pos"] = Vector2(0, 55)
 	picked._start_return("interception", defender)
 	check(picked.user_has_ball() and picked.controlled == defender, "user controls interception return against CPU offense")
+	check(picked.control_assist_ticks == 0, "gaining possession gives the returner immediate directional control")
 	picked._end_play("touchdown", Vector2(0, 10))
 	check(picked.home_score == 7 and picked.away_score == 0, "pick-six credits the correct team")
 	settle(picked)
@@ -240,6 +263,39 @@ func _test_defense_and_kicks() -> void:
 	touchback._start_return("interception", 9)
 	check(touchback.phase == "dead" and touchback.next_los == 20 and touchback.away_score == 0,
 		"interception in the end zone is a touchback, not an accidental safety")
+
+	var assisted = fresh()
+	snap_play(assisted, "spread_pass")
+	var pursuer = assisted._player_index("rb")
+	for p in assisted.players:
+		p["down"] = p["id"] not in [pursuer, defender]
+	assisted.players[pursuer]["pos"] = Vector2(0, 40)
+	assisted.players[defender]["pos"] = Vector2(0, 80)
+	assisted._start_return("interception", defender)
+	check(assisted.controlled == pursuer and assisted.control_assist_ticks == 60,
+		"change of possession selects a different defender with sixty ticks of assistance")
+	for unused in 60:
+		assisted.tick({"move": Vector2.UP, "turbo": true, "buttons": ["jump"]})
+	check(assisted.control_assist_ticks == 0 and assisted.players[pursuer]["vel"].y > 0,
+		"defender pursues the receiver despite opposite held direction for exactly sixty ticks")
+	check(assisted.players[pursuer]["jump_ticks"] > 0 and assisted.players[pursuer]["turbo_active"],
+		"defensive actions remain available during switch assistance")
+	assisted._control_ball()
+	check(assisted.control_assist_ticks == 0, "reselecting the same defender does not restart assistance")
+	assisted.players[pursuer]["vel"] = Vector2.ZERO
+	assisted.tick({"move": Vector2.UP})
+	check(assisted.players[pursuer]["vel"].y < 0, "directional input takes over after the one-second assistance")
+	assisted.setup_play(35, 1, 45)
+	check(assisted.control_assist_ticks == 0, "formation reset clears switch assistance")
+	var same_selected = fresh()
+	same_selected.next_offense_home = false
+	same_selected.setup_play(35, 1, 45)
+	same_selected._snap()
+	same_selected._set_controlled(defender)
+	check(same_selected.control_assist_ticks == 60, "switching to another defender enables assistance")
+	same_selected._start_return("interception", defender)
+	check(same_selected.user_has_ball() and same_selected.controlled == defender and same_selected.control_assist_ticks == 0,
+		"catching an interception clears assistance even when the active player does not change")
 
 	var stop = fresh()
 	stop.setup_play(44, 4, 49)

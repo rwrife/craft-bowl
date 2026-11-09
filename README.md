@@ -66,6 +66,8 @@ Touch devices use the on-screen stick and contextual action buttons.
 ### Godot match flow
 
 Games begin with **Ready to receive** and a playable kickoff return from your own 10-yard line.
+An animated kick arcs toward the returner before the catch; movement and the game clock start
+when the ball is caught.
 After a touchdown (seven points, including the automatic extra point) or made field goal, a series
 recap shows plays, yards, passing, rushing, first downs, possession time, and points. **Ready to kick**
 or **Ready to receive** starts the next kickoff. The CPU receives to open the second half.
@@ -75,6 +77,9 @@ Opponent possessions are played live, not fast-forwarded. Select **Rush the QB**
 defender nearest the projected receiver on a pass, and switch to the nearest teammate when the ball
 changes hands. Defense has turbo, dive/tackle, and jump/block. Interceptions and recovered fumbles
 can be returned, including for touchdowns; the return's final spot sets the next possession.
+After an automatic switch on defense, the newly active player follows AI pursuit for one second
+before stick/keyboard direction takes over. Turbo, dive/tackle, and jump remain available during
+that transition; other defenders continue their coverage and pursuit.
 
 On fourth down at the **opponent's 40 or closer**, **Kick field goal** (F / controller X) displays
 distance and success chance. Distance includes 17 yards for the snap and end zone; longer kicks

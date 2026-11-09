@@ -444,7 +444,7 @@ func _game_checksum(simulation) -> String:
 		simulation.los, simulation.first_down, simulation.down, simulation.home_score, simulation.away_score,
 		simulation.quarter, simulation.clock, simulation.game_over, simulation.play_number,
 		simulation.choices, simulation.chosen, simulation.offense_index, simulation.defense_index,
-		simulation.controlled, simulation.runner_phase, simulation.ball_state, simulation.carrier,
+		simulation.controlled, simulation.control_assist_ticks, simulation.runner_phase, simulation.ball_state, simulation.carrier,
 		simulation.ball_spot.x, simulation.ball_spot.y, simulation.message, player_state,
 		simulation.offense_home, simulation.next_offense_home, simulation.return_play, simulation.kickoff_return, simulation.kickoff_home,
 		simulation.series_home, simulation.series_stats, simulation.series_plays, simulation.series_recap,

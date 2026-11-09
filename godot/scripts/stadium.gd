@@ -380,7 +380,9 @@ func update_view(delta: float) -> void:
 
 func _update_camera(delta: float) -> void:
 	var desired: Vector2
-	if game.phase == "pre_snap":
+	if game.kickoff_return and game.ball_state == "flight":
+		desired = game.flight["to"]
+	elif game.phase == "pre_snap":
 		desired = Vector2(0, game.los - 11.0)
 	else:
 		var ball_pos: Vector2 = game.ball_position()

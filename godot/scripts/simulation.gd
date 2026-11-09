@@ -49,6 +49,7 @@ var chosen = -1
 var offense_index = 0
 var defense_index = 0
 var controlled = -1
+var control_assist_ticks = 0
 var runner_phase = false
 var message = "SELECT PLAY"
 var last_outcome = ""
@@ -306,6 +307,7 @@ func _snap() -> void:
 	carrier = _player_index("qb")
 	ball_state = "held"
 	controlled = carrier if offense_home else _player_index("mlb")
+	control_assist_ticks = 0
 	phase = "live"
 	phase_ticks = 0
 	runner_phase = false
@@ -322,6 +324,10 @@ func _snap() -> void:
 
 
 func _step_live(input: Dictionary) -> void:
+	if kickoff_return and ball_state == "flight":
+		_step_ball()
+		tick_count += 1
+		return
 	var used = minf(clock, DT)
 	clock -= used
 	var possession_stats = home_stats if user_has_ball() else away_stats
@@ -333,12 +339,14 @@ func _step_live(input: Dictionary) -> void:
 			if not p["down"]:
 				intents[p["id"]] = {"move": (ball_spot - p["pos"]).normalized()}
 	if controlled >= 0:
-		intents[controlled] = {
-			"move": input.get("move", Vector2.ZERO),
-			"turbo": input.get("turbo", false),
-			"dive": "dive" in input.get("buttons", []),
-			"jump": "jump" in input.get("buttons", []),
-		}
+		var intent: Dictionary = intents[controlled]
+		if control_assist_ticks == 0:
+			intent["move"] = input.get("move", Vector2.ZERO)
+		intent["turbo"] = input.get("turbo", false) or intent.get("turbo", false)
+		intent["dive"] = "dive" in input.get("buttons", []) or intent.get("dive", false)
+		intent["jump"] = "jump" in input.get("buttons", [])
+	if control_assist_ticks > 0:
+		control_assist_ticks -= 1
 	if not offense_home and not return_play:
 		var cpu = _cpu_offense_input()
 		if carrier >= 0:
@@ -439,6 +447,14 @@ func _step_ball() -> void:
 	if ball_state != "flight":
 		return
 	flight["elapsed"] += DT
+	if kickoff_return:
+		if flight["elapsed"] >= flight["duration"]:
+			carrier = flight["target"]
+			ball_state = "held"
+			caught = true
+			_control_ball()
+			message = "CAUGHT! KICKOFF RETURN!"
+		return
 	if toss_target < 0 and ball_height() <= 3.2:
 		for p in players:
 			if not p["offense"] and not p["down"] and p["jump_ticks"] > 0 and p["pos"].distance_to(ball_position()) < 1.5:
@@ -542,7 +558,7 @@ func _resolve_carrier() -> void:
 				c["down"] = true
 				c["recover"] = 45
 				carrier = -1
-				controlled = _nearest_home(spot)
+				_set_controlled(_nearest_home(spot))
 				loose_ticks = 90
 				message = "FUMBLE!"
 				return
@@ -779,7 +795,7 @@ func _ai_intents() -> Array:
 	var carrier_player: Dictionary = players[carrier] if has_carrier else {}
 	for p in players:
 		var intent = {}
-		if p["id"] != controlled and not p["down"] and p["dive_ticks"] == 0:
+		if (p["id"] != controlled or control_assist_ticks > 0) and not p["down"] and p["dive_ticks"] == 0:
 			if (return_play or kickoff_return) and not carrier_player.is_empty():
 				if p["id"] == carrier:
 					intent = _cpu_runner(p)
@@ -1134,17 +1150,23 @@ func _start_kickoff() -> void:
 	thrown = false
 	caught = false
 	loose_ticks = 0
-	carrier = _player_index("rb")
-	ball_state = "held"
+	var receiver = _player_index("rb")
 	for p in players:
-		if p["id"] == carrier:
+		if p["id"] == receiver:
 			p["pos"] = Vector2(0, OWN_GOAL + 10.0)
 		elif p["offense"]:
 			p["pos"] = Vector2(float(p["id"] - 4) * 5.0, 27.0 + float(p["id"] % 2) * 4.0)
 		else:
 			p["pos"] = Vector2(float(p["id"] - 13) * 5.0, 48.0 + float(p["id"] % 2) * 5.0)
-	_control_ball()
-	message = "KICKOFF RETURN!"
+	carrier = -1
+	ball_state = "flight"
+	flight = {
+		"from": Vector2(0, 65), "to": players[receiver]["pos"], "target": receiver,
+		"elapsed": 0.0, "duration": 1.5, "peak": 6.0, "wobble": 0.0,
+	}
+	controlled = receiver if offense_home else -1
+	control_assist_ticks = 0
+	message = "KICK INCOMING!"
 
 
 func _nearest_home(spot: Vector2) -> int:
@@ -1161,11 +1183,19 @@ func _nearest_home(spot: Vector2) -> int:
 
 
 func _control_ball() -> void:
-	controlled = carrier if user_has_ball() else _nearest_home(ball_position())
+	_set_controlled(carrier if user_has_ball() else _nearest_home(ball_position()))
 
 
 func _control_flight(target: int) -> void:
-	controlled = -1 if offense_home else _nearest_home(players[target]["pos"] + players[target]["vel"] * flight["duration"])
+	_set_controlled(-1 if offense_home else _nearest_home(players[target]["pos"] + players[target]["vel"] * flight["duration"]))
+
+
+func _set_controlled(index: int) -> void:
+	if user_has_ball():
+		control_assist_ticks = 0
+	elif index != controlled:
+		control_assist_ticks = 60 if index >= 0 else 0
+	controlled = index
 
 
 func _start_return(outcome: String, holder: int) -> void:
@@ -1319,6 +1349,7 @@ func _reset_formation() -> void:
 	phase = "pre_snap"
 	phase_ticks = 0
 	controlled = _player_index("qb" if offense_home else "mlb")
+	control_assist_ticks = 0
 	runner_phase = false
 	return_play = false
 	kickoff_return = false
