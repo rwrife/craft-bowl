@@ -70,6 +70,9 @@ target in **Project → Export**, then export the project. The scene and input i
 tied to Apple frameworks; platform-specific signing, store metadata, and export templates remain the
 responsibility of the target platform.
 
+Microsoft Store artwork, listing descriptions, and Windows screenshots are in
+[`WindowsStore/`](WindowsStore/README.md), with scripts to rebuild the assets and recapture the game.
+
 ## CI status
 
 `main` PR/push CI now enforces all issue-#2 core gates on hosted macOS runners:
