@@ -65,6 +65,8 @@ Touch devices use the on-screen stick and contextual action buttons.
 
 ### Godot match flow
 
+Before kickoff, a five-second warm-up pans across the home team and then the opponent, with
+players jumping in two rows and a compact matchup banner highlighting the team on camera.
 Games begin with **Ready to receive** and a playable kickoff return from your own 10-yard line.
 An animated kick arcs toward the returner before the catch; movement and the game clock start
 when the ball is caught.

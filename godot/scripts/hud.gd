@@ -24,6 +24,8 @@ var modal: Control
 var dev_overlay
 var controls_signature = ""
 var managed_team = 0
+var intro_teams: Array = []
+var intro_label: Label
 
 
 func _ready() -> void:
@@ -56,6 +58,8 @@ func show_screen(screen: String) -> void:
 		pad.reset()
 	pad = null
 	stat_overlay = null
+	intro_teams.clear()
+	intro_label = null
 	_clear(layer)
 	controls_signature = ""
 	match screen:
@@ -303,8 +307,15 @@ func _set_toggle(value: bool, key: String) -> void:
 
 
 func _build_intro() -> void:
-	_backdrop(0.65)
-	var box = _centered_box(750)
+	var box = VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 10)
+	layer.add_child(box)
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	box.offset_left = -375
+	box.offset_right = 375
+	box.offset_top = -155
+	box.offset_bottom = -20
 	box.add_child(_label("TONIGHT'S MATCHUP", 24, Color("ffda24")))
 	var row = HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -312,17 +323,33 @@ func _build_intro() -> void:
 	box.add_child(row)
 	for team in [app.game.home, app.game.away]:
 		var panel = PanelContainer.new()
-		panel.custom_minimum_size = Vector2(280, 160)
-		panel.add_theme_stylebox_override("panel", _style(Color(team["primary"], 0.95), team["secondary"], 4))
+		panel.custom_minimum_size = Vector2(280, 72)
+		intro_teams.append(panel)
 		var column = VBoxContainer.new()
 		column.alignment = BoxContainer.ALIGNMENT_CENTER
 		panel.add_child(column)
-		column.add_child(_label(team["abbr"], 52, team["secondary"]))
+		column.add_child(_label(team["abbr"], 32, team["secondary"]))
 		column.add_child(_label(team["name"].to_upper(), 18))
 		if row.get_child_count() > 0:
 			row.add_child(_label("VS", 32, Color("ffda24")))
 		row.add_child(panel)
-	box.add_child(_label("WARMING UP", 18))
+	intro_label = _label("", 18)
+	box.add_child(intro_label)
+	refresh_intro()
+
+
+func refresh_intro() -> void:
+	var spotlight = 0 if app.intro_elapsed < 2.5 else 1
+	var teams = [app.game.home, app.game.away]
+	var text = "%s WARMING UP" % teams[spotlight]["name"].to_upper()
+	if intro_label.text == text:
+		return
+	intro_label.text = text
+	for i in intro_teams.size():
+		var team: Dictionary = teams[i]
+		var active = i == spotlight
+		intro_teams[i].add_theme_stylebox_override("panel",
+			_style(Color(team["primary"], 0.92 if active else 0.45), team["secondary"], 4 if active else 1))
 
 
 func _score_cell(text: String, width: float, color: Color, font_size: int) -> Label:

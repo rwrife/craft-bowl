@@ -33,8 +33,49 @@ func _run() -> void:
 	var app = load("res://godot/main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
+	app.start_game(0)
+	app.set_process(false)
+	app.set_physics_process(false)
+	var warmup_checksum: String = app._game_checksum(app.game)
+	check(app.screen == "intro" and app.stadium.warmup_elapsed == 0.0 and
+		app.stadium.camera.position.is_equal_approx(Vector3(-11, 3.4, -48)),
+		"warm-up starts with a close camera on the home team")
+	check(app.ui.intro_label.text == "%s WARMING UP" % app.game.home["name"].to_upper(),
+		"warm-up banner highlights the home team first")
+	check(not app.stadium.ball.visible and not app.stadium.line_of_scrimmage.visible and
+		not app.stadium.first_down_line.visible and not app.stadium.down_marker.visible and
+		not app.stadium.official_root.visible,
+		"warm-up hides the ball and gameplay markers")
+	var home_root: Node3D = app.stadium.player_nodes[0]["root"]
+	var starting_height = home_root.position.y
+	app._process(1.25)
+	check(is_equal_approx(app.stadium.camera.position.x, 0.0) and home_root.position.y > starting_height,
+		"home camera pans while the rendered players jump")
+	var away_root: Node3D = app.stadium.player_nodes[9]["root"]
+	check(is_equal_approx(home_root.position.z, -38.0) and is_equal_approx(away_root.position.z, -68.0),
+		"both warm-up teams occupy the iOS-style two-row formations")
+	app._physics_process(Simulation.DT)
+	check(app._game_checksum(app.game) == warmup_checksum,
+		"warm-up poses and camera do not move simulation players or start the kickoff")
+	app._process(1.25)
+	check(app.ui.intro_label.text == "%s WARMING UP" % app.game.away["name"].to_upper() and
+		app.stadium.camera.position.is_equal_approx(Vector3(-11, 3.4, -58)),
+		"second half of the warm-up spotlights the opponent from the opposite side")
+	app._process(1.25)
+	check(is_equal_approx(app.stadium.camera.position.x, 0.0),
+		"opponent camera also pans across its jumping players")
+	app._process(1.25)
+	check(app.screen == "game" and app.stadium.warmup_elapsed < 0.0 and
+		app.game.phase == "kickoff_ready" and app.game.clock == 180.0,
+		"five-second warm-up restores gameplay and waits for kickoff readiness")
+	check(home_root.position.is_equal_approx(Vector3(app.game.players[0]["pos"].x, 0, -app.game.players[0]["pos"].y)) and
+		is_equal_approx(app.stadium.camera.fov, rad_to_deg(0.88)) and app.stadium.official_root.visible,
+		"warm-up completion restores simulation poses and the broadcast camera")
+	app.set_process(true)
+	app.set_physics_process(true)
 	app.start_game(0, false)
 	await process_frame
+	check(app.stadium.warmup_elapsed < 0.0, "autostart and replay can still skip the warm-up")
 	app.show_dev_overlay = true
 	app.ui.refresh_game()
 	check(app.ui.dev_overlay.visible, "developer overlay is available in-game")

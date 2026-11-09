@@ -113,8 +113,11 @@ func _process(delta: float) -> void:
 		return
 	if screen == "intro":
 		intro_elapsed += delta
+		stadium.warmup_elapsed = intro_elapsed
 		if intro_elapsed >= 5.0:
 			set_screen("game")
+		else:
+			ui.refresh_intro()
 	stadium.update_view(delta)
 	if screen == "game":
 		ui.refresh_game()
@@ -299,10 +302,12 @@ func _setup_input() -> void:
 
 func set_screen(next_screen: String) -> void:
 	screen = next_screen
+	stadium.warmup_elapsed = intro_elapsed if screen == "intro" else -1.0
 	pending_actions.clear()
 	pending_select = -1
 	touch_turbo = false
 	ui.show_screen(screen)
+	stadium.update_view(0.0)
 
 
 func start_game(team_index: int, show_intro: bool = true) -> void:
