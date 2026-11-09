@@ -209,6 +209,7 @@ var pixel_textures: Dictionary = {}
 var focus = Vector2(0, 24)
 var game = null
 var elapsed = 0.0
+var warmup_elapsed = -1.0
 var event_light_time = 0.0
 var last_effect_play = -1
 var shadows_enabled = true
@@ -288,6 +289,7 @@ func _ready() -> void:
 
 func set_game(simulation) -> void:
 	game = simulation
+	warmup_elapsed = -1.0
 	focus = Vector2(0, game.los - 11.0)
 	last_effect_play = game.play_number
 	turbo_trail.emitting = false
@@ -303,8 +305,9 @@ func set_game(simulation) -> void:
 		last_clock_text = ""
 		_build_dressing()
 	for p in game.players:
-		var team: Dictionary = game.home if p["offense"] else game.away
-		player_nodes.append(_make_player(p, team, not p["offense"]))
+		var is_home: bool = p["offense"] == game.offense_home
+		var team: Dictionary = game.home if is_home else game.away
+		player_nodes.append(_make_player(p, team, not is_home))
 	_build_sideline(game.home, -1.0)
 	_build_sideline(game.away, 1.0)
 	_build_cheerleaders(game.home, game.away)
@@ -325,20 +328,22 @@ func update_view(delta: float) -> void:
 	_update_camera(delta)
 	line_of_scrimmage.position.z = -game.los
 	first_down_line.position.z = -game.first_down
-	line_of_scrimmage.visible = game.phase != "dead"
-	first_down_line.visible = game.phase != "dead"
+	var warming_up = warmup_elapsed >= 0.0
+	official_root.visible = not warming_up
+	line_of_scrimmage.visible = not warming_up and game.phase != "dead"
+	first_down_line.visible = not warming_up and game.phase != "dead"
 	_update_effects(delta)
 	_update_game_day(delta)
 	_update_sidelines()
 	_update_displays()
-	var target = 0.12
+	var target = 0.72 if warming_up else 0.12
 	if game.phase == "live":
 		target = 1.0
 	elif game.phase == "dead" and game.last_outcome == "touchdown":
 		target = 1.6
 	excitement = lerpf(excitement, target, clampf(delta * 3.0, 0.0, 1.0))
 	crowd_material.set_shader_parameter("excitement", excitement)
-	down_marker.visible = game.phase == "pre_snap"
+	down_marker.visible = not warming_up and game.phase == "pre_snap"
 	down_marker.position = Vector3(0, 0, -(game.los - 6.5))
 	if down_marker.visible:
 		var ordinal = ["1st", "2nd", "3rd", "4th"][clampi(game.down - 1, 0, 3)]
@@ -348,16 +353,32 @@ func update_view(delta: float) -> void:
 		var p: Dictionary = game.players[i]
 		var parts: Dictionary = player_nodes[i]
 		var root: Node3D = parts["root"]
-		root.position = Vector3(p["pos"].x, 0, -p["pos"].y)
+		var jump_height = sin(PI * float(p["jump_ticks"]) / 24.0) * 1.15
+		root.position = Vector3(p["pos"].x, jump_height, -p["pos"].y)
 		root.rotation.y = -p["facing"]
 		root.rotation.x = -1.15 if p["down"] or p["dive_ticks"] > 0 else 0.0
-		var speed = p["vel"].length()
+		if warming_up:
+			var is_home: bool = p["offense"] == game.offense_home
+			var team_index = i % 9
+			var row = int(team_index / 5)
+			var column = team_index % 5 - 2
+			var yard_line = (38.0 if is_home else 68.0) + float(row) * (-2.2 if is_home else 2.2)
+			jump_height = maxf(0.0, sin(warmup_elapsed * 7.0 + float(team_index) * 0.7)) * 0.8
+			root.position = Vector3(float(column) * 2.4, jump_height, -yard_line)
+			root.rotation = Vector3(0, 0 if is_home else PI, 0)
+		var speed = 3.0 if warming_up else p["vel"].length()
 		var swing = sin(elapsed * (8.0 + speed * 0.55) + float(i) * 0.7) * minf(speed / 9.0, 1.0) * 0.7
 		parts["left_leg"].rotation.x = swing
 		parts["right_leg"].rotation.x = -swing
 		parts["left_arm"].rotation.x = -swing * 0.8
 		parts["right_arm"].rotation.x = swing * 0.8
-		parts["marker"].visible = game.phase == "live" and game.controlled == i
+		if warming_up:
+			parts["left_arm"].rotation.x = -PI * jump_height / 0.8
+			parts["right_arm"].rotation.x = -PI * jump_height / 0.8
+		elif p["jump_ticks"] > 0:
+			parts["left_arm"].rotation.x = PI
+			parts["right_arm"].rotation.x = PI
+		parts["marker"].visible = not warming_up and game.phase == "live" and game.controlled == i
 		var shadow: MeshInstance3D = parts["shadow"]
 		shadow.position = Vector3(root.position.x, 0.088, root.position.z)
 		if p["down"] or p["dive_ticks"] > 0:
@@ -370,12 +391,25 @@ func update_view(delta: float) -> void:
 	if game.ball_state == "held" and game.carrier >= 0:
 		var holder: Dictionary = game.players[game.carrier]
 		ball.position += Vector3(0.32 * cos(holder["facing"]), 0.0, 0.32 * sin(holder["facing"]))
-	ball.visible = game.ball_state != "dead" or game.phase == "live"
+	ball.visible = not warming_up and (game.ball_state != "dead" or game.phase == "live")
 
 
 func _update_camera(delta: float) -> void:
+	if warmup_elapsed >= 0.0:
+		var spotlight_home = warmup_elapsed < 2.5
+		var local_time = warmup_elapsed if spotlight_home else warmup_elapsed - 2.5
+		var pan = lerpf(-11.0, 11.0, clampf(local_time / 2.5, 0.0, 1.0))
+		var team_y = 38.0 if spotlight_home else 68.0
+		var camera_y = team_y + (10.0 if spotlight_home else -10.0)
+		camera.fov = rad_to_deg(0.72)
+		camera.position = Vector3(pan, 3.4, -camera_y)
+		camera.look_at(Vector3(pan * 0.25, 1.2, -team_y), Vector3.UP)
+		return
+	camera.fov = rad_to_deg(0.88)
 	var desired: Vector2
-	if game.phase == "pre_snap":
+	if game.kickoff_return and game.ball_state == "flight":
+		desired = game.flight["to"]
+	elif game.phase == "pre_snap":
 		desired = Vector2(0, game.los - 11.0)
 	else:
 		var ball_pos: Vector2 = game.ball_position()

@@ -16,13 +16,16 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if game == null or camera == null or game.game_over or game.halftime or not game.drive_recap.is_empty():
+	if game == null or camera == null or game.game_over or game.halftime or game.phase == "kickoff_ready":
 		return
 	var shown = []
 	if game.phase == "pre_snap":
-		for lane in ["left", "center", "right", "backfield"]:
-			if game.chosen < 0 or game.offense_play()["slots"][lane]["role"] == "target":
-				shown.append(game._player_index(Simulation.LANE_POSITIONS[lane]))
+		if not game.offense_home:
+			shown.append(game.controlled)
+		else:
+			for lane in ["left", "center", "right", "backfield"]:
+				if game.chosen < 0 or game.offense_play()["slots"][lane]["role"] == "target":
+					shown.append(game._player_index(Simulation.LANE_POSITIONS[lane]))
 	elif game.phase == "live" and game.runner_phase and game.carrier >= 0:
 		shown.append(game.carrier)
 	for index in shown:

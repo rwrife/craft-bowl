@@ -1,13 +1,13 @@
 extends RefCounted
 
-const OpponentDrive = preload("res://godot/scripts/opponent_drive.gd")
-
 const DT = 1.0 / 60.0
 const HALF_WIDTH = 53.333 / 2.0
 const GOAL_LINE = 110.0
 const OWN_GOAL = 10.0
 const KICKOFF = 35.0
 const RADIUS = 0.42
+const DEFENSIVE_TURBO_BONUS = 1.10
+const DEFENSIVE_DIVE_BONUS = 1.15
 const LANES = ["left", "center", "right", "backfield"]
 const LANE_POSITIONS = {
 	"left": "laneLeft", "center": "laneCenter", "right": "laneRight", "backfield": "rb",
@@ -27,7 +27,6 @@ var away: Dictionary
 var curves: Dictionary
 var players: Array = []
 var rng = RandomNumberGenerator.new()
-var nested = false
 var tick_count = 0
 
 var phase = "pre_snap"
@@ -52,6 +51,7 @@ var chosen = -1
 var offense_index = 0
 var defense_index = 0
 var controlled = -1
+var control_assist_ticks = 0
 var runner_phase = false
 var message = "SELECT PLAY"
 var last_outcome = ""
@@ -66,21 +66,29 @@ var ball_spot = Vector2.ZERO
 var flight: Dictionary = {}
 var loose_ticks = 0
 var toss_target = -1
-var drive_runner = null
-var drive_recap: Dictionary = {}
 var home_stats = _empty_stats()
 var away_stats = _empty_stats()
+var offense_home = true
+var next_offense_home = true
+var return_play = false
+var kickoff_return = false
+var kickoff_home = true
+var series_stats = _empty_stats()
+var series_plays = 0
+var series_home = true
+var series_recap: Dictionary = {}
+var scrimmage_recorded = false
+var benched_health: Dictionary = {}
 
 
 func _init(game_data: Dictionary = {}, home_team: Dictionary = {}, away_team: Dictionary = {},
-		seed_value: int = 1, is_nested: bool = false) -> void:
+		seed_value: int = 1, skip_kickoff: bool = false) -> void:
 	if game_data.is_empty():
 		return
 	data = game_data
 	home = home_team
 	away = away_team
 	curves = data["curves"]
-	nested = is_nested
 	rng.seed = seed_value
 	var positions: Array = data["format"]["offense"] + data["format"]["defense"]
 	for i in positions.size():
@@ -94,9 +102,11 @@ func _init(game_data: Dictionary = {}, home_team: Dictionary = {}, away_team: Di
 			"name": profile["name"], "ratings": ratings, "pos": Vector2.ZERO, "vel": Vector2.ZERO,
 			"facing": 0.0 if i < 9 else PI, "health": 1.0, "turbo": capacity,
 			"capacity": capacity, "cooldown": 0.0, "turbo_active": false, "exerting": false,
-			"down": false, "dive_ticks": 0, "recover": 0, "engaged": 0,
+			"down": false, "dive_ticks": 0, "jump_ticks": 0, "recover": 0, "engaged": 0,
 		})
 	_reset_formation()
+	if not skip_kickoff:
+		_prepare_kickoff(true)
 
 
 static func _empty_stats() -> Dictionary:
@@ -155,6 +165,20 @@ func ball_height() -> float:
 
 
 func available_actions() -> Array:
+	if not user_has_ball():
+		return []
+	return _qb_actions()
+
+
+func user_has_ball() -> bool:
+	return offense_home != return_play
+
+
+func _stats() -> Dictionary:
+	return home_stats if offense_home else away_stats
+
+
+func _qb_actions() -> Array:
 	if phase != "live" or runner_phase or ball_state != "held" or carrier < 0:
 		return []
 	var qb: Dictionary = players[carrier]
@@ -174,12 +198,6 @@ func available_actions() -> Array:
 
 func tick(input: Dictionary = {}) -> void:
 	phase_ticks += 1
-	if drive_runner != null:
-		drive_runner.advance(36)
-		if drive_runner.finished:
-			_apply_opponent_drive(drive_runner.result)
-			drive_runner = null
-		return
 	if game_over:
 		_rest_players()
 		if _pressed(input) and phase_ticks >= 90:
@@ -190,11 +208,12 @@ func tick(input: Dictionary = {}) -> void:
 		if _pressed(input) and modal_ticks >= 90:
 			halftime = false
 			halftime_due = false
-			next_los = KICKOFF
-			next_down = 1
-			next_first_down = KICKOFF + 10.0
-			message = "SELECT PLAY"
-			_reset_formation()
+			_prepare_kickoff(false)
+		return
+	if phase == "kickoff_ready":
+		_rest_players()
+		if _pressed(input):
+			_start_kickoff()
 		return
 	if phase == "pre_snap":
 		_rest_players()
@@ -204,10 +223,13 @@ func tick(input: Dictionary = {}) -> void:
 	else:
 		_rest_players()
 		if phase_ticks >= 150:
-			if quarter == 4 and clock <= 0.0 and drive_recap.is_empty():
+			if quarter == 4 and clock <= 0.0:
 				_end_game()
-			elif halftime_due and drive_recap.is_empty():
+			elif halftime_due:
 				_start_halftime()
+			elif not series_recap.is_empty():
+				phase = "kickoff_ready"
+				phase_ticks = 0
 			else:
 				_reset_formation()
 
@@ -217,19 +239,13 @@ func _pressed(input: Dictionary) -> bool:
 
 
 func _step_pre_snap(input: Dictionary) -> void:
-	if not drive_recap.is_empty():
-		modal_ticks += 1
-		phase_ticks = 0
-		if modal_ticks >= 1800 or (modal_ticks >= 30 and _pressed(input)):
-			drive_recap = {}
-			modal_ticks = 0
-			message = "SELECT PLAY"
-			if quarter == 4 and clock <= 0.0:
-				_end_game()
-			elif halftime_due:
-				_start_halftime()
-		return
 	var buttons: Array = input.get("buttons", [])
+	if offense_home and "field_goal" in buttons and "field_goal" in kicking_actions():
+		_kick("field_goal")
+		return
+	if offense_home and "punt" in buttons and "punt" in kicking_actions():
+		_kick("punt")
+		return
 	var was_chosen = chosen >= 0
 	var selection = int(input.get("select", -1))
 	if selection >= 0 and selection < choices.size():
@@ -257,10 +273,23 @@ func choose(index: int) -> void:
 		push_error("Invalid play-card selection: %d" % index)
 		return
 	chosen = index
-	offense_index = choices[index]
+	if offense_home:
+		offense_index = choices[index]
+	else:
+		defense_index = choices[index]
+		_position_defense()
 
 
 func _deal() -> void:
+	if not offense_home:
+		choices = []
+		for id in ["mlb_blitz", "man", "zone3"]:
+			for i in data["defense"].size():
+				if data["defense"][i]["id"] == id:
+					choices.append(i)
+		chosen = -1
+		offense_index = rng.randi_range(0, data["offense"].size() - 1)
+		return
 	var pool = range(data["offense"].size())
 	choices = []
 	while choices.size() < 3 and not pool.is_empty():
@@ -271,41 +300,67 @@ func _deal() -> void:
 
 
 func _snap() -> void:
-	defense_index = rng.randi_range(0, data["defense"].size() - 1)
+	if not offense_home and not kicking_actions().is_empty():
+		_kick(kicking_actions()[0])
+		return
+	if offense_home:
+		defense_index = rng.randi_range(0, data["defense"].size() - 1)
+	_position_defense()
 	carrier = _player_index("qb")
 	ball_state = "held"
-	controlled = carrier
+	controlled = carrier if offense_home else _player_index("mlb")
+	control_assist_ticks = 0
 	phase = "live"
 	phase_ticks = 0
 	runner_phase = false
+	return_play = false
+	kickoff_return = false
+	scrimmage_recorded = false
 	thrown = false
 	caught = false
 	toss_target = -1
 	loose_ticks = 0
 	route_breaks.clear()
-	drive_recap.clear()
 	message = ""
 	play_number += 1
 
 
 func _step_live(input: Dictionary) -> void:
+	if kickoff_return and ball_state == "flight":
+		_step_ball()
+		tick_count += 1
+		return
 	var used = minf(clock, DT)
 	clock -= used
-	home_stats["seconds"] += used
+	var possession_stats = home_stats if user_has_ball() else away_stats
+	possession_stats["seconds"] += used
+	series_stats["seconds"] += used
+	_update_defensive_control()
 	var intents = _ai_intents()
 	if loose_ticks > 0:
 		for p in players:
 			if not p["down"]:
 				intents[p["id"]] = {"move": (ball_spot - p["pos"]).normalized()}
-	elif controlled >= 0:
-		intents[controlled] = {
-			"move": input.get("move", Vector2.ZERO),
-			"turbo": input.get("turbo", false),
-			"dive": "dive" in input.get("buttons", []),
-		}
-	_handle_qb_buttons(input.get("buttons", []))
+	if controlled >= 0:
+		var intent: Dictionary = intents[controlled]
+		if control_assist_ticks == 0:
+			intent["move"] = input.get("move", Vector2.ZERO)
+		intent["turbo"] = input.get("turbo", false) or intent.get("turbo", false)
+		intent["dive"] = "dive" in input.get("buttons", []) or intent.get("dive", false)
+		intent["jump"] = "jump" in input.get("buttons", [])
+	if control_assist_ticks > 0:
+		control_assist_ticks -= 1
+	if not offense_home and not return_play:
+		var cpu = _cpu_offense_input()
+		if carrier >= 0:
+			intents[carrier] = cpu
+		_handle_qb_buttons(cpu.get("buttons", []))
+	elif offense_home and not return_play and not kickoff_return:
+		_handle_qb_buttons(input.get("buttons", []))
 	_update_exertion()
 	_step_players(intents)
+	if not user_has_ball() and controlled >= 0 and players[controlled]["dive_ticks"] > 0:
+		_set_controlled(_nearest_home(ball_position()), true)
 	_step_ball()
 	if phase != "live":
 		return
@@ -322,12 +377,12 @@ func _update_exertion() -> void:
 		var key = not lane.is_empty() and slots[lane]["role"] == "target"
 		if p["position"] == "qb" and offense_play()["kind"] == "keeper":
 			key = true
-		p["exerting"] = key or (ball_state == "held" and p["id"] == carrier and
+		p["exerting"] = not p["offense"] or p["id"] == controlled or key or (ball_state == "held" and p["id"] == carrier and
 			(runner_phase or p["position"] != "qb"))
 
 
 func _handle_qb_buttons(buttons: Array) -> void:
-	var actions = available_actions()
+	var actions = _qb_actions()
 	if actions.is_empty():
 		return
 	for lane in ["left", "center", "right"]:
@@ -341,14 +396,14 @@ func _handle_qb_buttons(buttons: Array) -> void:
 	var qb: Dictionary = players[carrier]
 	if "handoff" in actions and qb["pos"].distance_to(players[rb]["pos"]) <= 2.2:
 		carrier = rb
-		controlled = rb
+		_control_ball()
 		runner_phase = true
 	elif "toss" in actions:
 		var target: Vector2 = players[rb]["pos"] + players[rb]["vel"] * 0.25
 		if target.y <= qb["pos"].y:
 			_throw(target, rb, 14.0, 0.35)
 			toss_target = rb
-			controlled = -1
+			_control_flight(rb)
 
 
 func _pass(lane: String) -> void:
@@ -380,7 +435,7 @@ func _pass(lane: String) -> void:
 	if pressured:
 		flight["wobble"] = 0.35
 	thrown = true
-	controlled = -1
+	_control_flight(receiver)
 
 
 func _throw(target: Vector2, receiver: int, speed: float, peak: float) -> void:
@@ -397,6 +452,19 @@ func _step_ball() -> void:
 	if ball_state != "flight":
 		return
 	flight["elapsed"] += DT
+	if kickoff_return:
+		if flight["elapsed"] >= flight["duration"]:
+			carrier = flight["target"]
+			ball_state = "held"
+			caught = true
+			_control_ball()
+			message = "CAUGHT! KICKOFF RETURN!"
+		return
+	if toss_target < 0 and ball_height() <= 3.2:
+		for p in players:
+			if not p["offense"] and not p["down"] and p["jump_ticks"] > 0 and p["pos"].distance_to(ball_position()) < 1.5:
+				_end_play("incomplete", ball_position(), "JUMP BLOCK!")
+				return
 	if flight["elapsed"] < flight["duration"]:
 		return
 	ball_spot = flight["to"]
@@ -406,7 +474,7 @@ func _step_ball() -> void:
 		if target == toss_target and not players[target]["down"] and players[target]["pos"].distance_to(ball_spot) <= 1.2:
 			ball_state = "held"
 			carrier = target
-			controlled = target
+			_control_ball()
 			runner_phase = true
 			message = ""
 		else:
@@ -424,7 +492,7 @@ func _resolve_catch(spot: Vector2, target: int) -> void:
 		if p["offense"] or p["down"]:
 			continue
 		var distance = p["pos"].distance_to(spot)
-		if p["dive_ticks"] > 0 and distance <= 1.5:
+		if (p["dive_ticks"] > 0 or p["jump_ticks"] > 0) and distance <= 1.5:
 			_end_play("incomplete", spot, "SWATTED!")
 			return
 		if distance < nearest_distance:
@@ -435,7 +503,7 @@ func _resolve_catch(spot: Vector2, target: int) -> void:
 		if rng.randf() < 0.12 + 0.3 * _ability(players[nearest]):
 			carrier = nearest
 			ball_state = "held"
-			_end_play("interception", players[nearest]["pos"])
+			_start_return("interception", nearest)
 		else:
 			_end_play("incomplete", spot, "BROKEN UP!")
 		return
@@ -450,7 +518,7 @@ func _resolve_catch(spot: Vector2, target: int) -> void:
 			if rng.randf() < chance:
 				carrier = target
 				ball_state = "held"
-				controlled = target
+				_control_ball()
 				runner_phase = true
 				caught = true
 				message = "CATCH!"
@@ -465,13 +533,13 @@ func _resolve_carrier() -> void:
 		return
 	var c: Dictionary = players[carrier]
 	var spot: Vector2 = c["pos"]
-	if spot.y >= GOAL_LINE:
+	if (not return_play and spot.y >= GOAL_LINE) or (return_play and spot.y <= OWN_GOAL):
 		_end_play("touchdown", spot)
 		return
 	if absf(spot.x) > HALF_WIDTH:
 		_end_play("out_of_bounds", spot)
 		return
-	if spot.y <= OWN_GOAL:
+	if (not return_play and spot.y <= OWN_GOAL) or (return_play and spot.y >= GOAL_LINE):
 		_end_play("safety", spot)
 		return
 	if spot.y > los:
@@ -479,7 +547,7 @@ func _resolve_carrier() -> void:
 	if phase_ticks > 30 and message == "CATCH!":
 		message = ""
 	for defender in players:
-		if defender["offense"] or defender["down"] or defender["recover"] > 0:
+		if defender["offense"] == c["offense"] or defender["down"] or defender["recover"] > 0:
 			continue
 		var diving: bool = defender["dive_ticks"] > 0
 		var reach = 1.5 if diving else 0.95
@@ -495,7 +563,7 @@ func _resolve_carrier() -> void:
 				c["down"] = true
 				c["recover"] = 45
 				carrier = -1
-				controlled = -1
+				_set_controlled(_nearest_home(spot))
 				loose_ticks = 90
 				message = "FUMBLE!"
 				return
@@ -519,14 +587,14 @@ func _resolve_loose_ball() -> void:
 			nearest = p["id"]
 			distance = d
 	if nearest >= 0:
-		if players[nearest]["offense"]:
-			ball_state = "held"
-			carrier = nearest
-			controlled = nearest
+		ball_state = "held"
+		carrier = nearest
+		if players[nearest]["offense"] != (not return_play):
+			_start_return("fumble", nearest)
+		else:
+			_control_ball()
 			runner_phase = true
 			message = "RECOVERED!"
-		else:
-			_end_play("fumble", ball_spot)
 		loose_ticks = 0
 		return
 	loose_ticks -= 1
@@ -545,6 +613,10 @@ func _rest_players() -> void:
 func _step_players(intents: Array) -> void:
 	for p in players:
 		var intent: Dictionary = intents[p["id"]]
+		if p["jump_ticks"] > 0:
+			p["jump_ticks"] -= 1
+		if intent.get("jump", false) and p["jump_ticks"] == 0 and not p["down"] and p["recover"] == 0:
+			p["jump_ticks"] = 24
 		if p["down"]:
 			p["vel"] = Vector2.ZERO
 			if p["recover"] > 0:
@@ -569,6 +641,8 @@ func _step_players(intents: Array) -> void:
 		if intent.get("dive", false) and p["recover"] == 0:
 			var direction = Vector2(sin(p["facing"]), cos(p["facing"]))
 			var speed = maxf(p["vel"].length(), 4.0) * lerpf(0.8, 1.0, p["health"]) + 1.5 + 2.0 * _ability(p)
+			if p["id"] == controlled and not user_has_ball():
+				speed *= DEFENSIVE_DIVE_BONUS
 			p["vel"] = direction * speed
 			p["dive_ticks"] = 16 + int(10.0 * _ability(p))
 			continue
@@ -603,6 +677,8 @@ func _step_players(intents: Array) -> void:
 			lerpf(float(curves["exhaustedSpeedFactor"]), 1.0, p["health"])
 		if p["turbo_active"]:
 			vmax *= curves["turboSpeedMultiplier"]
+			if p["id"] == controlled and not user_has_ball():
+				vmax *= DEFENSIVE_TURBO_BONUS
 		if p["engaged"] > 0:
 			vmax *= 0.7 if carrying else 0.45
 		if recovering:
@@ -728,13 +804,33 @@ func _ai_intents() -> Array:
 	var carrier_player: Dictionary = players[carrier] if has_carrier else {}
 	for p in players:
 		var intent = {}
-		if p["id"] != controlled and not p["down"] and p["dive_ticks"] == 0:
-			if p["offense"]:
+		if (p["id"] != controlled or control_assist_ticks > 0) and not p["down"] and p["dive_ticks"] == 0:
+			if (return_play or kickoff_return) and not carrier_player.is_empty():
+				if p["id"] == carrier:
+					intent = _cpu_runner(p)
+				elif p["offense"] != carrier_player["offense"]:
+					intent = _pursue(p, carrier_player)
+				else:
+					intent = _return_block(p, carrier_player)
+			elif p["offense"]:
 				intent = _offense_intent(p, carrier_player)
 			else:
 				intent = _defense_intent(p, carrier_player)
 		intents[p["id"]] = intent
 	return intents
+
+
+func _return_block(p: Dictionary, ball_carrier: Dictionary) -> Dictionary:
+	var nearest = -1
+	var distance = INF
+	for opponent in players:
+		if opponent["offense"] == p["offense"] or opponent["down"]:
+			continue
+		var score: float = opponent["pos"].distance_to(p["pos"]) + opponent["pos"].distance_to(ball_carrier["pos"])
+		if score < distance:
+			distance = score
+			nearest = opponent["id"]
+	return _go(p, players[nearest]["pos"], 0.4) if nearest >= 0 else {}
 
 
 func _offense_intent(p: Dictionary, ball_carrier: Dictionary) -> Dictionary:
@@ -851,7 +947,11 @@ func receiver_openness(index: int) -> float:
 func _end_play(outcome: String, spot: Vector2, text: String = "") -> void:
 	if phase != "live":
 		return
-	_record_play(outcome, spot)
+	var scoring_home = user_has_ball()
+	var was_return = return_play
+	var was_kickoff = kickoff_return
+	if not was_return and not was_kickoff and not scrimmage_recorded:
+		_record_series_play(outcome, spot)
 	last_outcome = outcome
 	last_spot = spot
 	phase = "dead"
@@ -869,24 +969,21 @@ func _end_play(outcome: String, spot: Vector2, text: String = "") -> void:
 	var yards = ("%+d YDS" % gain)
 	match outcome:
 		"touchdown":
-			home_score += 7
+			_add_points(scoring_home, 7)
 			message = "TOUCHDOWN!"
-			_restart_drive()
-			_begin_opponent_drive("touchdown", KICKOFF)
+			_finish_series("TOUCHDOWN", 7)
+			_prepare_kickoff(not scoring_home, false)
 		"safety":
-			away_score += 2
+			_add_points(not scoring_home, 2)
 			message = "SAFETY!"
-			_restart_drive()
-			_begin_opponent_drive("safety", KICKOFF)
+			_finish_series("SAFETY", 0)
+			_prepare_kickoff(not scoring_home, false)
 		"interception":
-			message = "INTERCEPTED!"
-			_restart_drive()
-			var their_spot = 120.0 - spot.y
-			_begin_opponent_drive("interception", 30.0 if their_spot <= OWN_GOAL else clampf(round(their_spot), 11, 109))
+			message = "INTERCEPTED - TOUCHBACK" if text == "TOUCHBACK" else "INTERCEPTED!"
+			_switch_possession(not offense_home, 120.0 - spot.y)
 		"fumble":
 			message = "FUMBLE!"
-			_restart_drive()
-			_begin_opponent_drive("fumble", clampf(round(120.0 - spot.y), 11, 109))
+			_switch_possession(not scoring_home, 120.0 - spot.y if not was_return else spot.y)
 		"incomplete":
 			message = text if not text.is_empty() else "INCOMPLETE"
 			_advance_down(los)
@@ -896,51 +993,72 @@ func _end_play(outcome: String, spot: Vector2, text: String = "") -> void:
 			if outcome == "out_of_bounds": label = "OUT OF BOUNDS"
 			if outcome == "dive": label = "DIVE!"
 			message = label + "  " + yards
-			_advance_down(clampf(round(spot.y), 11, 109))
-	if drive_runner == null:
-		_advance_quarter()
+			if was_return:
+				_switch_possession(scoring_home, 120.0 - spot.y)
+			elif was_kickoff:
+				next_los = clampf(round(spot.y), 11, 109)
+				next_down = 1
+				next_first_down = minf(next_los + 10.0, GOAL_LINE)
+			else:
+				_advance_down(clampf(round(spot.y), 11, 109))
+	return_play = false
+	kickoff_return = false
+	_advance_quarter()
+
+
+func _record_series_play(outcome: String, spot: Vector2) -> void:
+	scrimmage_recorded = true
+	var before = _stats().duplicate()
+	_record_play(outcome, spot)
+	series_plays += 1
+	for key in series_stats:
+		if key == "longest":
+			series_stats[key] = maxi(series_stats[key], int(round(spot.y - los)))
+		elif key != "seconds":
+			series_stats[key] += _stats()[key] - before[key]
 
 
 func _record_play(outcome: String, spot: Vector2) -> void:
+	var stats = _stats()
 	var gain = int(round((GOAL_LINE if outcome == "touchdown" else spot.y) - los))
 	if outcome == "interception":
-		home_stats["pass_attempts"] += 1
-		home_stats["interceptions"] += 1
-		home_stats["turnovers"] += 1
+		stats["pass_attempts"] += 1
+		stats["interceptions"] += 1
+		stats["turnovers"] += 1
 	elif outcome == "incomplete":
-		home_stats["pass_attempts"] += 1
+		stats["pass_attempts"] += 1
 	elif outcome == "sack" or (outcome == "safety" and not caught and not runner_phase):
-		home_stats["sacks"] += 1
-		home_stats["sack_yards"] += maxi(0, -gain)
+		stats["sacks"] += 1
+		stats["sack_yards"] += maxi(0, -gain)
 	else:
 		if caught:
-			home_stats["pass_attempts"] += 1
-			home_stats["completions"] += 1
-			home_stats["pass_yards"] += gain
+			stats["pass_attempts"] += 1
+			stats["completions"] += 1
+			stats["pass_yards"] += gain
 			if outcome == "touchdown":
-				home_stats["pass_tds"] += 1
+				stats["pass_tds"] += 1
 		else:
-			home_stats["rush_attempts"] += 1
-			home_stats["rush_yards"] += gain
+			stats["rush_attempts"] += 1
+			stats["rush_yards"] += gain
 			if outcome == "touchdown":
-				home_stats["rush_tds"] += 1
+				stats["rush_tds"] += 1
 		if outcome == "fumble":
-			home_stats["turnovers"] += 1
-		home_stats["longest"] = maxi(home_stats["longest"], gain)
+			stats["turnovers"] += 1
+		stats["longest"] = maxi(stats["longest"], gain)
 
 
 func _advance_down(spot: float) -> void:
 	if spot >= first_down:
-		home_stats["first_downs"] += 1
+		_stats()["first_downs"] += 1
+		series_stats["first_downs"] += 1
 		next_los = spot
 		next_down = 1
 		next_first_down = minf(spot + 10.0, GOAL_LINE)
 		message += "  FIRST DOWN!"
 	elif down >= 4:
 		message += "  TURNOVER ON DOWNS"
-		home_stats["turnovers"] += 1
-		_restart_drive()
-		_begin_opponent_drive("downs", 120.0 - spot)
+		_stats()["turnovers"] += 1
+		_switch_possession(not offense_home, 120.0 - spot)
 	else:
 		next_los = spot
 		next_down = down + 1
@@ -965,29 +1083,225 @@ func _advance_quarter() -> void:
 		message += "  -  FINAL"
 
 
-func _begin_opponent_drive(trigger: String, start: float) -> void:
-	if nested or (quarter == 4 and clock <= 0.0):
+func _add_points(for_home: bool, points: int) -> void:
+	if for_home:
+		home_score += points
+	else:
+		away_score += points
+
+
+func _set_offense(for_home: bool) -> void:
+	next_offense_home = for_home
+	if offense_home == for_home:
 		return
-	drive_runner = OpponentDrive.new(self, trigger, start)
+	for p in players:
+		var key = ("home:" if p["offense"] == offense_home else "away:") + p["position"]
+		benched_health[key] = {"health": p["health"], "tick": tick_count}
+	offense_home = for_home
+	# Field coordinates always point upfield for the team taking the next snap.
+	for p in players:
+		var team = home if p["offense"] == offense_home else away
+		var profile: Dictionary = team["roster"][p["position"]]
+		p["ratings"] = profile["ratings"].duplicate()
+		p["number"] = profile["number"]
+		p["name"] = profile["name"]
+		p["capacity"] = _curve("turboCapacityMin", "turboCapacityMax", _rating(p["ratings"], "endurance"))
+		var key = ("home:" if p["offense"] == offense_home else "away:") + p["position"]
+		p["health"] = 1.0
+		if benched_health.has(key):
+			var state: Dictionary = benched_health[key]
+			var regen = _curve("regenMin", "regenMax", _rating(p["ratings"], "endurance"))
+			p["health"] = minf(1.0, state["health"] + float(tick_count - state["tick"]) * DT * regen)
 
 
-func _apply_opponent_drive(result: Dictionary) -> void:
-	away_score += result["opponent_points"]
-	home_score += result["user_points"]
-	for key in away_stats:
-		if key == "longest":
-			away_stats[key] = maxi(away_stats[key], result["stats"][key])
-		else:
-			away_stats[key] += result["stats"][key]
-	if quarter < 3 and result["quarter"] >= 3:
-		halftime_due = true
-	quarter = result["quarter"]
-	clock = result["clock"]
-	next_los = result["resume_los"]
+func _new_series() -> void:
+	series_stats = _empty_stats()
+	series_plays = 0
+	series_home = offense_home
+
+
+func _switch_possession(for_home: bool, spot: float) -> void:
+	next_offense_home = for_home
+	next_los = clampf(round(spot), 20.0 if spot <= OWN_GOAL else 11.0, 109.0)
 	next_down = 1
 	next_first_down = minf(next_los + 10.0, GOAL_LINE)
-	drive_recap = result
-	modal_ticks = 0
+	_new_series()
+	series_home = for_home
+
+
+func _finish_series(ending: String, points: int) -> void:
+	series_recap = {
+		"team": (home if series_home else away)["abbr"], "ending": ending,
+		"plays": series_plays, "yards": series_stats["pass_yards"] + series_stats["rush_yards"] - series_stats["sack_yards"],
+		"points": points, "stats": series_stats.duplicate(),
+	}
+
+
+func _prepare_kickoff(receive_home: bool, ready: bool = true) -> void:
+	kickoff_home = receive_home
+	if ready:
+		phase = "kickoff_ready"
+		phase_ticks = 0
+		message = "KICKOFF"
+
+
+func _start_kickoff() -> void:
+	_set_offense(kickoff_home)
+	series_recap.clear()
+	_new_series()
+	next_los = OWN_GOAL + 10.0
+	next_down = 1
+	next_first_down = next_los + 10.0
+	_reset_formation()
+	phase = "live"
+	kickoff_return = true
+	runner_phase = true
+	thrown = false
+	caught = false
+	loose_ticks = 0
+	var receiver = _player_index("rb")
+	for p in players:
+		if p["id"] == receiver:
+			p["pos"] = Vector2(0, OWN_GOAL + 10.0)
+		elif p["offense"]:
+			p["pos"] = Vector2(float(p["id"] - 4) * 5.0, 27.0 + float(p["id"] % 2) * 4.0)
+		else:
+			p["pos"] = Vector2(float(p["id"] - 13) * 5.0, 48.0 + float(p["id"] % 2) * 5.0)
+	carrier = -1
+	ball_state = "flight"
+	flight = {
+		"from": Vector2(0, 65), "to": players[receiver]["pos"], "target": receiver,
+		"elapsed": 0.0, "duration": 1.5, "peak": 6.0, "wobble": 0.0,
+	}
+	controlled = receiver if offense_home else -1
+	control_assist_ticks = 0
+	message = "KICK INCOMING!"
+
+
+func _nearest_home(spot: Vector2) -> int:
+	var nearest = -1
+	var distance = INF
+	for p in players:
+		if p["offense"] != offense_home or p["down"] or p["dive_ticks"] > 0:
+			continue
+		var d: float = p["pos"].distance_squared_to(spot)
+		if d < distance:
+			distance = d
+			nearest = p["id"]
+	return nearest
+
+
+func _control_ball() -> void:
+	_set_controlled(carrier if user_has_ball() else _nearest_home(ball_position()))
+
+
+func _control_flight(target: int) -> void:
+	_set_controlled(-1 if offense_home else _nearest_home(players[target]["pos"] + players[target]["vel"] * flight["duration"]))
+
+
+func _update_defensive_control() -> void:
+	if user_has_ball() or control_assist_ticks > 0:
+		return
+	if runner_phase or return_play or kickoff_return or ball_state in ["flight", "loose"]:
+		_set_controlled(_nearest_home(ball_position()))
+
+
+func _set_controlled(index: int, immediate: bool = false) -> void:
+	if user_has_ball():
+		control_assist_ticks = 0
+	elif index != controlled:
+		if control_assist_ticks > 0 and not immediate:
+			return
+		control_assist_ticks = 60 if index >= 0 else 0
+	controlled = index
+
+
+func _start_return(outcome: String, holder: int) -> void:
+	if outcome == "interception" and players[holder]["pos"].y >= GOAL_LINE:
+		_end_play("interception", players[holder]["pos"], "TOUCHBACK")
+		return
+	if not return_play and not kickoff_return and not scrimmage_recorded:
+		_record_series_play(outcome, players[holder]["pos"])
+	var switching_to_home = players[holder]["offense"] == offense_home
+	if switching_to_home != series_home:
+		series_home = switching_to_home
+		series_stats = _empty_stats()
+		series_plays = 0
+	return_play = not players[holder]["offense"]
+	kickoff_return = false
+	carrier = holder
+	ball_state = "held"
+	runner_phase = true
+	_control_ball()
+	message = "INTERCEPTED! RETURN!" if outcome == "interception" else "FUMBLE RECOVERED! RETURN!"
+
+
+func kicking_actions() -> Array:
+	if phase != "pre_snap" or down != 4:
+		return []
+	return ["field_goal"] if los >= GOAL_LINE - 40.0 else ["punt"]
+
+
+func field_goal_distance() -> int:
+	return int(round(GOAL_LINE - los)) + 17
+
+
+func field_goal_chance() -> float:
+	return clampf(1.02 - float(field_goal_distance() - 18) * 0.018, 0.05, 0.97)
+
+
+func _kick(kind: String) -> void:
+	if kind not in kicking_actions():
+		push_error("Kick is not available in this down and field position: " + kind)
+		return
+	phase = "dead"
+	phase_ticks = 0
+	series_plays += 1
+	var used = minf(clock, 5.0)
+	clock -= used
+	_stats()["seconds"] += used
+	series_stats["seconds"] += used
+	ball_state = "dead"
+	carrier = -1
+	ball_spot = Vector2(0, los)
+	if kind == "field_goal":
+		if rng.randf() < field_goal_chance():
+			_add_points(offense_home, 3)
+			last_outcome = "field_goal"
+			message = "%d YD FIELD GOAL GOOD!" % field_goal_distance()
+			_finish_series("FIELD GOAL", 3)
+			_prepare_kickoff(not offense_home, false)
+		else:
+			last_outcome = "missed_field_goal"
+			message = "%d YD FIELD GOAL NO GOOD" % field_goal_distance()
+			_switch_possession(not offense_home, 120.0 - (los - 7.0))
+	else:
+		last_outcome = "punt"
+		var landing = minf(los + 50.0, GOAL_LINE - 10.0)
+		message = "PUNT  %d YDS" % int(landing - los)
+		_switch_possession(not offense_home, 120.0 - landing)
+	last_spot = ball_spot
+	_advance_quarter()
+
+
+func _position_defense() -> void:
+	for p in players:
+		if p["offense"]:
+			continue
+		var offset: Vector2 = FORMATION[p["position"]]
+		var assignment: String = defense_play()["assignments"].get(p["position"], "rush")
+		if assignment == "rush" and p["position"] in ["mlb", "olb", "ss"]:
+			offset.y = 2.5
+		elif assignment.begins_with("man:"):
+			offset.x = FORMATION[LANE_POSITIONS[assignment.get_slice(":", 1)]].x
+			offset.y = 3.5
+		elif assignment.begins_with("zone:"):
+			offset.x = _lane_x(assignment.get_slice(":", 1))
+			offset.y = 7.0
+		elif assignment.begins_with("deepZone:"):
+			offset.x = _lane_x(assignment.get_slice(":", 1))
+			offset.y = 16.0
+		p["pos"] = Vector2(offset.x, clampf(los + offset.y, RADIUS, 120.0 - RADIUS))
 
 
 func _start_halftime() -> void:
@@ -1002,7 +1316,7 @@ func _end_game() -> void:
 	phase = "dead"
 	phase_ticks = 0
 	controlled = -1
-	drive_recap.clear()
+	series_recap.clear()
 	message = "FINAL"
 
 
@@ -1014,15 +1328,19 @@ func start_new_game() -> void:
 	game_over = false
 	halftime = false
 	halftime_due = false
-	drive_recap.clear()
 	home_stats = _empty_stats()
 	away_stats = _empty_stats()
 	last_outcome = ""
+	series_recap.clear()
+	_set_offense(true)
+	benched_health.clear()
+	_new_series()
 	for p in players:
 		p["health"] = 1.0
 	message = "SELECT PLAY"
 	_restart_drive()
 	_reset_formation()
+	_prepare_kickoff(true)
 
 
 func setup_play(line: float, next_play_down: int, first: float) -> void:
@@ -1042,13 +1360,17 @@ func force_whistle() -> void:
 
 
 func _reset_formation() -> void:
+	_set_offense(next_offense_home)
 	los = next_los
 	down = next_down
 	first_down = next_first_down
 	phase = "pre_snap"
 	phase_ticks = 0
-	controlled = _player_index("qb")
+	controlled = _player_index("qb" if offense_home else "mlb")
+	control_assist_ticks = 0
 	runner_phase = false
+	return_play = false
+	kickoff_return = false
 	route_breaks.clear()
 	for p in players:
 		var offset: Vector2 = FORMATION[p["position"]]
@@ -1057,6 +1379,7 @@ func _reset_formation() -> void:
 		p["facing"] = 0.0 if p["offense"] else PI
 		p["down"] = false
 		p["dive_ticks"] = 0
+		p["jump_ticks"] = 0
 		p["recover"] = 0
 		p["engaged"] = 0
 		p["exerting"] = false
@@ -1067,21 +1390,24 @@ func _reset_formation() -> void:
 	carrier = -1
 	ball_spot = Vector2(0, los)
 	_deal()
+	_position_defense()
 	if message.is_empty() or message == "CATCH!":
 		message = "SELECT PLAY"
 
 
 func cpu_input() -> Dictionary:
-	if game_over or halftime or not drive_recap.is_empty():
+	if game_over or halftime or phase == "kickoff_ready":
 		return {"buttons": ["snap"]}
 	if phase == "pre_snap":
 		if chosen < 0:
+			if not offense_home:
+				return {"select": play_number % 3}
 			var best = 0
 			var best_score = -INF
 			for i in choices.size():
 				var play: Dictionary = data["offense"][choices[i]]
 				var passing = play["kind"] in ["pass", "playAction", "screen"]
-				var score = rng.randf()
+				var score = float((play_number * 7 + choices[i] * 3) % 11) / 11.0
 				if first_down - los >= 7 and down >= 2 and passing: score += 0.7
 				if first_down - los <= 3 and not passing: score += 0.6
 				if GOAL_LINE - los <= 10 and play["kind"] == "run": score += 0.3
@@ -1093,7 +1419,19 @@ func cpu_input() -> Dictionary:
 		return {"buttons": ["snap"]}
 	if phase != "live":
 		return {}
-	var actions = available_actions()
+	if not user_has_ball() and controlled >= 0:
+		if ball_state == "flight":
+			var intent = _go(players[controlled], flight["to"], 0.3, true)
+			intent["jump"] = players[controlled]["pos"].distance_to(ball_position()) < 1.5
+			return intent
+		if carrier >= 0:
+			return _pursue(players[controlled], players[carrier])
+		return {}
+	return _cpu_offense_input()
+
+
+func _cpu_offense_input() -> Dictionary:
+	var actions = _qb_actions()
 	if not actions.is_empty():
 		if offense_play()["kind"] == "keeper":
 			return _cpu_runner(players[carrier])
@@ -1119,7 +1457,7 @@ func cpu_input() -> Dictionary:
 				return {"buttons": [best_action]}
 			return _cpu_runner(players[carrier])
 		return {"move": Vector2(0, -0.6) if players[carrier]["pos"].y > los - 7 else Vector2.ZERO}
-	if ball_state == "held" and carrier == controlled:
+	if ball_state == "held" and carrier >= 0:
 		return _cpu_runner(players[carrier])
 	return {}
 
@@ -1129,10 +1467,10 @@ func _cpu_runner(p: Dictionary) -> Dictionary:
 	var best_score = -INF
 	for k in range(-5, 6):
 		var angle = float(k) * 0.26
-		var direction = Vector2(sin(angle), cos(angle))
+		var direction = Vector2(sin(angle), cos(angle) * (-1.0 if return_play else 1.0))
 		var clearance = 8.0
 		for defender in players:
-			if defender["offense"] or defender["down"]:
+			if defender["offense"] == p["offense"] or defender["down"]:
 				continue
 			var relative: Vector2 = defender["pos"] - p["pos"]
 			var along = relative.dot(direction)

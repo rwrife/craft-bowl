@@ -60,10 +60,44 @@ godot --headless --path . --script res://godot/tests/test_app_replay.gd
 ```
 
 In-game controls: WASD/arrows or the left stick to move; J/K/L or X/A/B to select/pass; H or Y to
-handoff; Space or the right trigger to turbo; U or the right shoulder to dive; P/Escape or Menu to
+handoff; Space or the right trigger to turbo; U or the right shoulder to dive/tackle; I or Y on defense
+to jump and block a pass; P/Escape or Menu to
 pause. The developer overlay is on `~`, a three-finger tap, or the controller Back/Select button and
 includes pause, slow-motion, autopilot, video toggles, and deterministic record/replay/verification.
 Touch devices use the on-screen stick and contextual action buttons.
+
+### Godot match flow
+
+Before kickoff, a five-second warm-up pans across the home team and then the opponent, with
+players jumping in two rows and a compact matchup banner highlighting the team on camera.
+Games begin with **Ready to receive** and a playable kickoff return from your own 10-yard line.
+An animated kick arcs toward the returner before the catch; movement and the game clock start
+when the ball is caught.
+After a touchdown (seven points, including the automatic extra point) or made field goal, a series
+recap shows plays, yards, passing, rushing, first downs, possession time, and points. **Ready to kick**
+or **Ready to receive** starts the next kickoff. The CPU receives to open the second half.
+
+Opponent possessions are played live, not fast-forwarded. Select **Rush the QB**, **Man to Man**, or
+**Zone Defense** before the CPU snap. You control the middle linebacker at the snap, switch to the
+defender nearest the projected receiver on a pass, and switch to the nearest teammate when the ball
+changes hands. Defense has turbo, dive/tackle, and jump/block. Interceptions and recovered fumbles
+can be returned, including for touchdowns; the return's final spot sets the next possession.
+Once the ball leaves the CPU quarterback or possession changes, defensive control keeps tracking
+the teammate nearest the ball, with at least one second between automatic switches.
+After an automatic switch on defense, the newly active player follows AI pursuit for one second
+before stick/keyboard direction takes over. Turbo, dive/tackle, and jump remain available during
+that transition; other defenders continue their coverage and pursuit.
+The user-controlled defender has 10% faster turbo and 15% more dive travel; CPU defenders and
+offensive movement are unchanged. Diving immediately transfers defensive control to the next
+closest available teammate, bypassing the switch delay and excluding players already diving.
+
+On fourth down at the **opponent's 40 or closer**, **Kick field goal** (F / controller X) displays
+distance and success chance. Distance includes 17 yards for the snap and end zone; longer kicks
+have lower seeded success probability. A miss gives the opponent the ball at the kicking spot.
+Farther out, **Punt** (G / controller B) advances the ball 50 yards, capped at the opponent's 10.
+You can still select and run an offensive play instead of kicking. The CPU uses the same fourth-down
+kicking rules. Touch kicking buttons appear alongside the play cards. Block-kick formations are
+reserved for a later update.
 
 To package for another platform, install the matching Godot export template, add a preset for the
 target in **Project → Export**, then export the project. The scene and input implementation are not
@@ -100,7 +134,7 @@ Launch arguments (UserDefaults): `-CBAutoStart YES` skips the title screen, `-CB
 
 The Simulator has no MetalFX, so upscaling falls back to a bilinear blit there. On the Simulator the GPU-family check is skipped; on devices an A14 or newer is required.
 
-## Playing (current sandbox)
+## Playing (Swift/iOS sandbox)
 
 You play offense (blue) against CPU defense (red). A turnover, touchdown, or safety restarts the drive.
 

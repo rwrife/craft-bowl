@@ -131,8 +131,11 @@ func _process(delta: float) -> void:
 		return
 	if screen == "intro":
 		intro_elapsed += delta
+		stadium.warmup_elapsed = intro_elapsed
 		if intro_elapsed >= 5.0:
 			set_screen("game")
+		else:
+			ui.refresh_intro()
 	stadium.update_view(delta)
 	if screen == "game":
 		ui.refresh_game()
@@ -190,12 +193,15 @@ func _physics_process(_delta: float) -> void:
 		game_inputs.append(input.duplicate(true))
 	var before = game.phase
 	var was_over = game.game_over
+	var before_home = game.offense_home
 	game.tick(input)
+	if game.offense_home != before_home:
+		stadium.set_game(game)
 	if playback_active and playback_cursor >= saved_recording["inputs"].size():
 		playback_active = false
 		replay_status = "verified" if _game_checksum(game) == saved_recording["checksum"] else "mismatch"
 		paused = true
-	if screen == "game" and before == "live" and game.phase == "dead":
+	if screen == "game" and before in ["live", "pre_snap"] and game.phase == "dead":
 		_play_sfx(WHISTLE)
 		if game.last_outcome in ["touchdown", "interception", "fumble", "safety", "sack"] or \
 				"FIRST DOWN" in game.message or "TURNOVER ON DOWNS" in game.message:
@@ -234,6 +240,16 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if paused:
+		return
+	if game.phase == "pre_snap" and game.offense_home:
+		for kick in game.kicking_actions():
+			if event.is_action_pressed(kick):
+				queue_action(kick)
+				get_viewport().set_input_as_handled()
+				return
+	if game.phase == "live" and not game.user_has_ball() and event.is_action_pressed("jump"):
+		queue_action("jump")
+		get_viewport().set_input_as_handled()
 		return
 	for action in ["pass_left", "pass_center", "pass_right", "handoff", "dive", "snap",
 			"next_play", "previous_play"]:
@@ -289,6 +305,9 @@ func _setup_input() -> void:
 	_add_action("handoff", [KEY_H], [JOY_BUTTON_Y])
 	_add_action("snap", [KEY_ENTER, KEY_KP_ENTER])
 	_add_action("dive", [KEY_U], [JOY_BUTTON_RIGHT_SHOULDER])
+	_add_action("jump", [KEY_I], [JOY_BUTTON_Y])
+	_add_action("field_goal", [KEY_F], [JOY_BUTTON_X])
+	_add_action("punt", [KEY_G], [JOY_BUTTON_B])
 	_add_action("turbo", [KEY_SPACE], [], [[JOY_AXIS_TRIGGER_RIGHT, 1.0]])
 	_add_action("pause_game", [KEY_P, KEY_ESCAPE], [JOY_BUTTON_START])
 	_add_action("toggle_dev_overlay", [KEY_QUOTELEFT], [JOY_BUTTON_BACK])
@@ -301,10 +320,12 @@ func _setup_input() -> void:
 
 func set_screen(next_screen: String) -> void:
 	screen = next_screen
+	stadium.warmup_elapsed = intro_elapsed if screen == "intro" else -1.0
 	pending_actions.clear()
 	pending_select = -1
 	touch_turbo = false
 	ui.show_screen(screen)
+	stadium.update_view(0.0)
 
 
 func start_game(team_index: int, show_intro: bool = true) -> void:
@@ -439,15 +460,20 @@ func _game_checksum(simulation) -> String:
 		var velocity: Vector2 = player["vel"]
 		player_state.append([
 			position.x, position.y, velocity.x, velocity.y, player["health"], player["turbo"],
-			player["facing"], player["down"], player["recover"],
+			player["facing"], player["down"], player["recover"], player["jump_ticks"],
 		])
 	var state = [
 		simulation.tick_count, simulation.rng.state, simulation.phase, simulation.phase_ticks,
 		simulation.los, simulation.first_down, simulation.down, simulation.home_score, simulation.away_score,
 		simulation.quarter, simulation.clock, simulation.game_over, simulation.play_number,
 		simulation.choices, simulation.chosen, simulation.offense_index, simulation.defense_index,
-		simulation.controlled, simulation.runner_phase, simulation.ball_state, simulation.carrier,
+		simulation.controlled, simulation.control_assist_ticks, simulation.runner_phase, simulation.ball_state, simulation.carrier,
 		simulation.ball_spot.x, simulation.ball_spot.y, simulation.message, player_state,
+		simulation.offense_home, simulation.next_offense_home, simulation.return_play, simulation.kickoff_return, simulation.kickoff_home,
+		simulation.series_home, simulation.series_stats, simulation.series_plays, simulation.series_recap,
+		simulation.home_stats, simulation.away_stats, simulation.flight, simulation.loose_ticks,
+		simulation.next_los, simulation.next_down, simulation.next_first_down,
+		simulation.scrimmage_recorded, simulation.benched_health,
 	]
 	var context = HashingContext.new()
 	var error = context.start(HashingContext.HASH_SHA256)
