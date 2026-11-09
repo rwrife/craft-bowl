@@ -108,7 +108,10 @@ func _process(delta: float) -> void:
 
 
 func _load_logo() -> ArrayMesh:
-	var file = FileAccess.open(LOGO_PATH, FileAccess.READ)
+	var path = LOGO_PATH
+	if OS.has_feature("windows") and not OS.has_feature("editor"):
+		path = OS.get_executable_path().get_base_dir().path_join("App/BlockBowlLogo.obj")
+	var file = FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		push_error("Could not open the title logo: " + error_string(FileAccess.get_open_error()))
 		return null
