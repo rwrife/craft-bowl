@@ -24,6 +24,49 @@ Swift package. Run `make open` after a fresh checkout. Edit `project.yml` instea
 
 If `xcodebuild` reports the Command Line Tools instead of Xcode, run `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 
+## Portable Godot game
+
+The Godot 4.4.1 project at the repository root is a cross-platform runtime for the game. It reuses the
+shipping playbooks, rating curves, team catalog, logo, and audio while implementing the menus, match
+simulation, stadium, HUD, touch controls, keyboard, and gamepad in GDScript and Godot's renderer. The
+stadium uses a dark, fogged night environment with a dim voxel crowd, field-focused floodlights with fake volumetric light shafts, height fog, drifting haze motes, low mist, warm accent lights, a screen vignette, bloom,
+subtle translucent turbo trails, turf kick-up on tackles, and touchdown confetti, pyro jets, fireworks, and a team-color light show over the bowl.
+Game-day touches include lens flares on the light banks, crowd camera flashes that build with excitement, a follow-spot on the ball carrier,
+light pooling on the turf, contact shadows, striped officials, a chain crew with down box, a sideline TV camera operator, kicking nets and carts,
+cheerleaders at each end-zone corner, and a film-style post pass with color grade, chromatic fringe, and grain.
+The title logo slams onto the screen with squash, camera shake, a flash, block dust, and a thud.
+Surfaces use pixel-noise block textures, and ad boards use pixelated lettering. Its stacked bowl has a 52-row double deck
+with a slight upper-deck overhang, aisles, vomitories, stair rails, a lit glass suite level, roof-mounted light banks, a single home tunnel in an end-zone
+corner, LED ribbon boards, a padded lower barrier with team names, sponsor ads, and live game clocks, and a
+hanging jumbo tron with the live score. The field has painted team end zones, a midfield logo, yard numbers,
+a wide white border, pylons, yard-number arrows, and an on-field down-and-distance marker, viewed from a raised broadcast camera with a
+bottom score bug. Players have padded helmets, shoulder pads, belts, knee pads, socks, and shoulder numbers; road teams wear white. The wider sidelines include benches,
+coaches, and 32 loosely scattered players per team between the 20-yard lines; they sway subtly and jump
+to cheer during live plays.
+Crowd characters face the field in team-heavy colors. Nearer rows use detailed Minecraft-style
+models with faces, hair or caps, arm poses, and foam fingers; middle rows use lighter block models; farther
+rows use pixel billboards, with each fan's detail tier randomly dithered across row boundaries. Block fans bounce in a GPU shader as plays heat up. The Swift/iOS app remains available in `App/`
+and `Packages/`.
+
+Open `project.godot` in Godot 4.4.1 or later and run the project. The Godot project uses the
+Compatibility renderer and a 1280×720 landscape viewport. To run the deterministic gameplay tests:
+
+```sh
+godot --headless --path . --script res://godot/tests/test_simulation.gd
+godot --headless --path . --script res://godot/tests/test_app_replay.gd
+```
+
+In-game controls: WASD/arrows or the left stick to move; J/K/L or X/A/B to select/pass; H or Y to
+handoff; Space or the right trigger to turbo; U or the right shoulder to dive; P/Escape or Menu to
+pause. The developer overlay is on `~`, a three-finger tap, or the controller Back/Select button and
+includes pause, slow-motion, autopilot, video toggles, and deterministic record/replay/verification.
+Touch devices use the on-screen stick and contextual action buttons.
+
+To package for another platform, install the matching Godot export template, add a preset for the
+target in **Project → Export**, then export the project. The scene and input implementation are not
+tied to Apple frameworks; platform-specific signing, store metadata, and export templates remain the
+responsibility of the target platform.
+
 ## CI status
 
 `main` PR/push CI now enforces all issue-#2 core gates on hosted macOS runners:
