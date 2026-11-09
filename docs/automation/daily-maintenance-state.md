@@ -1,5 +1,12 @@
 # Daily maintenance state
 
+## 2026-11-09 run (selection checkpoint)
+
+- Timestamp: `2026-11-09T06:25:53Z`. GitHub preflight passed. `origin/main` = `4820945482652e5c263026394163b4a7b67d7238`. Open PR snapshot: 0; none reviewed, merged, or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Latest main Windows Store release run [42556836489](https://github.com/rwrife/craft-bowl/actions/runs/42556836489) SUCCESS; automatic Xcode CI removed on main, so this is not native Apple evidence. Closure audit: #4/#5 need interactive runtime acceptance; #25 still lacks full non-overlap proof; #30 debug view remains runtime-gated. No issue closed.
+- Selected [#25](https://github.com/rwrife/craft-bowl/issues/25) for bounded Godot collision solver regression, since Godot now serves Windows game and its solver still has a 32-iteration cap. Branch `fix/issue-25-godot-corner` in dedicated `.worktrees/issue-25-godot-corner` from current main. Existing worktrees retained. Issue stays open for universal acceptance.
+- Actions: RED headless Godot 4.4.1 test measured `0.113380` yard worst residual overlap for 18 players spawned at same field corner with old 32-sweep solver. Raised fixed Godot collision solver cap to 128 and added one-tick regression; kept existing push weights, wall clamp, and contact accounting. GREEN one-tick regression; issue still OPEN for universal acceptance.
+- Verification: native pinned Godot `--headless --path . --import --quit` PASS; `--script res://godot/tests/test_simulation.gd` PASS; `--script res://godot/tests/test_app_replay.gd` PASS (6008 ticks); `git diff --check` PASS. These are local Linux tests, not Windows packaged runtime or physical-device performance. Independent read-only Copilot staged-tree review PASS at `7720831064322dd617d96f6b43f01353696ab711`, no blockers; 4x worst-case pair checks and device performance remain unmeasured. Codex transport failed and Claude OAuth expired; Copilot review succeeded. PR and hosted checks pending.
+
 ## 2026-11-08 run (selection checkpoint)
 
 - Timestamp: `2026-11-08T06:25:09Z`. GitHub preflight passed; `origin/main` = `d303f75e932aff4bbeee2cf7f1127e993a380741`. Open PR snapshot: 0; none reviewed, merged or blocked. Open issue snapshot: 55 (#4–#23, #25–#59). Latest main [CI 42348757234](https://github.com/rwrife/craft-bowl/actions/runs/42348757234) SUCCESS. Closure audit: #4 needs interactive runtime evidence; #25 still lacks universal non-overlap proof; #30 debug-view acceptance remains interactive-gated. No closure.

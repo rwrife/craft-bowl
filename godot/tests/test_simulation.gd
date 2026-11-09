@@ -140,6 +140,7 @@ func _run() -> void:
 
 	_test_defense_and_kicks()
 	_test_defensive_mobility()
+	_test_corner_collisions()
 
 	_finish()
 
@@ -504,6 +505,22 @@ func _test_defensive_mobility() -> void:
 	var baseline_distance: float = baseline.players[defender]["pos"].y - 40.0
 	check(is_equal_approx(boosted_distance / baseline_distance, 1.15),
 		"user defensive dive travels fifteen percent farther than the unchanged CPU dive")
+
+
+func _test_corner_collisions() -> void:
+	var sim = fresh()
+	var corner = Vector2(-Simulation.HALF_WIDTH - 1.5 + Simulation.RADIUS, Simulation.RADIUS)
+	for i in sim.players.size():
+		sim.players[i]["pos"] = corner
+		sim.players[i]["vel"] = Vector2.ZERO
+		sim.players[i]["down"] = false
+		sim.players[i]["dive_ticks"] = 0
+	sim._resolve_collisions()
+	var worst = 0.0
+	for a in sim.players.size():
+		for b in range(a + 1, sim.players.size()):
+			worst = maxf(worst, Simulation.RADIUS * 2.0 - sim.players[a]["pos"].distance_to(sim.players[b]["pos"]))
+	check(worst <= 0.005, "18-player coincident corner pile separates within one tick (overlap %.6f)" % worst)
 
 
 func _finish() -> void:
