@@ -31,8 +31,32 @@ func has_controller_binding(action: String) -> bool:
 
 func _run() -> void:
 	var app = load("res://godot/main.tscn").instantiate()
+	var display_sizes = [
+		Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160),
+		Vector2i(3440, 1440), Vector2i(1280, 1024), Vector2i(1080, 1920),
+		Vector2i(1366, 768), Vector2i(800, 600),
+	]
+	for display_size in display_sizes:
+		var window_size = app.startup_window_size(display_size)
+		check(window_size.x > 0 and window_size.y > 0, "startup window has positive dimensions")
+		check(window_size.x * 9 == window_size.y * 16, "startup window is exactly 16:9")
+		check(window_size.x <= display_size.x * 0.75 and window_size.y <= display_size.y * 0.75,
+			"startup window fits within 75 percent of both display dimensions")
+		check((window_size.x + 16) > display_size.x * 0.75 or
+			(window_size.y + 9) > display_size.y * 0.75,
+			"startup window is the largest exact 16:9 size within the display limit")
+	check(app.startup_window_size(Vector2i(1920, 1080)) == Vector2i(1440, 810),
+		"1080p displays start at 1440 by 810")
 	root.add_child(app)
 	await process_frame
+	if OS.has_feature("pc") and DisplayServer.get_name() != "headless":
+		var window = app.get_window()
+		if window.mode == Window.MODE_WINDOWED:
+			var display_size = DisplayServer.screen_get_size(window.current_screen)
+			check(window.size == app.startup_window_size(display_size),
+				"desktop startup applies the size for the current display")
+			check(window.position == DisplayServer.screen_get_position(window.current_screen) +
+				(display_size - window.size) / 2, "desktop startup centers the window on its display")
 	app.start_game(0)
 	app.set_process(false)
 	app.set_physics_process(false)

@@ -58,6 +58,7 @@ var debug_touch_triggered = false
 
 
 func _ready() -> void:
+	_setup_window()
 	_setup_input()
 	_load_settings()
 	data = Data.load_game_data()
@@ -76,6 +77,23 @@ func _ready() -> void:
 	add_child(ui)
 	ui.setup(self)
 	_parse_arguments()
+
+
+static func startup_window_size(display_size: Vector2i) -> Vector2i:
+	var units = floori(minf(display_size.x * 0.75 / 16.0, display_size.y * 0.75 / 9.0))
+	return Vector2i(16, 9) * units
+
+
+func _setup_window() -> void:
+	if not OS.has_feature("pc") or DisplayServer.get_name() == "headless":
+		return
+	var window = get_window()
+	if window.mode != Window.MODE_WINDOWED:
+		return
+	var current_screen = window.current_screen
+	var display_size = DisplayServer.screen_get_size(current_screen)
+	window.size = startup_window_size(display_size)
+	window.position = DisplayServer.screen_get_position(current_screen) + (display_size - window.size) / 2
 
 
 func _exit_tree() -> void:
