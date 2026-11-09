@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Godot
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = '4.4.1-stable'
+          $base = "https://github.com/godotengine/godot-builds/releases/download/$release"
+          $archive = "Godot_v${release}_win64.exe.zip"
+          Invoke-WebRequest "$base/SHA512-SUMS.txt" -OutFile "$env:RUNNER_TEMP/SHA512-SUMS.txt"
+          Invoke-WebRequest "$base/$archive" -OutFile "$env:RUNNER_TEMP/$archive"
+          $match = @(Get-Content "$env:RUNNER_TEMP/SHA512-SUMS.txt" | Where-Object { ($_ -split '\s+')[-1].TrimStart('*') -ceq $archive })
+          if ($match.Count -ne 1) { throw 'Missing or ambiguous Godot checksum.' }
+          if ((Get-FileHash "$env:RUNNER_TEMP/$archive" -Algorithm SHA512).Hash -ine ($match[0] -split '\s+')[0]) {
+            throw 'Godot checksum mismatch.'
+          }
+          Expand-Archive "$env:RUNNER_TEMP/$archive" -DestinationPath "$env:RUNNER_TEMP/godot"
+          $godot = Join-Path "$env:RUNNER_TEMP/godot" "Godot_v${release}_win64_console.exe"
+          if (-not (Test-Path $godot)) { throw 'Godot console executable missing.' }
+          "GODOT_EXE=$godot" >> $env:GITHUB_ENV
+      - name: Import resources and test gameplay
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:GODOT_EXE --headless --path . --editor --import --quit
+          if ($LASTEXITCODE -ne 0) { throw 'Godot import failed.' }
+          foreach ($test in @('test_simulation.gd', 'test_app_replay.gd')) {
+            & $env:GODOT_EXE --headless --path . --script "res://godot/tests/$test"
+            if ($LASTEXITCODE -ne 0) { throw "Godot test failed: $test" }
+          }
