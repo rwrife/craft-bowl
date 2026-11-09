@@ -1,0 +1,188 @@
+name: Release Windows Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Store package version: X.Y.Z.0 (X must be at least 1)"
+        required: true
+        default: "1.0.0.0"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-windows-store-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: "4.4.1"
+  PACKAGE_VERSION: ${{ inputs.package_version }}
+  PACKAGE_NAME: ${{ vars.WINDOWS_STORE_IDENTITY_NAME }}
+  PACKAGE_PUBLISHER: ${{ vars.WINDOWS_STORE_PUBLISHER }}
+  PUBLISHER_DISPLAY_NAME: ${{ vars.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
+
+jobs:
+  package:
+    name: Build x64 Store MSIX
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate Store configuration
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('PACKAGE_NAME', 'PACKAGE_PUBLISHER', 'PUBLISHER_DISPLAY_NAME')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing $name. Configure the WINDOWS_STORE_* repository variables documented in WindowsStore\README.md."
+            }
+          }
+          if ($env:PACKAGE_VERSION -cnotmatch '^[1-9][0-9]{0,4}\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.0$') {
+            throw 'package_version must use X.Y.Z.0, with X at least 1 and each component at most 65535.'
+          }
+          foreach ($part in $env:PACKAGE_VERSION.Split('.')) {
+            if ([int]$part -gt 65535) { throw 'Package version components must not exceed 65535.' }
+          }
+
+      - name: Install Godot and matching Windows export template
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = "$env:GODOT_VERSION-stable"
+          $baseUrl = "https://github.com/godotengine/godot-builds/releases/download/$release"
+          $download = Join-Path $env:RUNNER_TEMP 'godot-download'
+          $editor = Join-Path $env:RUNNER_TEMP 'godot-editor'
+          $templates = Join-Path $env:APPDATA "Godot\export_templates\$env:GODOT_VERSION.stable"
+          New-Item -ItemType Directory -Force -Path $download, $editor, $templates | Out-Null
+          Invoke-WebRequest "$baseUrl/SHA512-SUMS.txt" -OutFile (Join-Path $download 'SHA512-SUMS.txt')
+          $checksums = Get-Content (Join-Path $download 'SHA512-SUMS.txt')
+          $editorArchive = "Godot_v${release}_win64.exe.zip"
+          $templateArchive = "Godot_v${release}_export_templates.tpz"
+          foreach ($file in @($editorArchive, $templateArchive)) {
+            $destination = Join-Path $download $file
+            Invoke-WebRequest "$baseUrl/$file" -OutFile $destination
+            $match = @($checksums | Where-Object { ($_ -split '\s+')[-1].TrimStart('*') -ceq $file })
+            if ($match.Count -ne 1) { throw "Missing or ambiguous SHA512 checksum for $file." }
+            $expected = ($match[0] -split '\s+')[0]
+            if ((Get-FileHash $destination -Algorithm SHA512).Hash -ine $expected) {
+              throw "SHA512 checksum mismatch for $file."
+            }
+          }
+          Expand-Archive (Join-Path $download $editorArchive) -DestinationPath $editor
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Join-Path $download $templateArchive))
+          try {
+            $entry = $archive.GetEntry('templates/windows_release_x86_64.exe')
+            if ($null -eq $entry) { throw 'Windows x64 release template is missing.' }
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile(
+              $entry, (Join-Path $templates 'windows_release_x86_64.exe'), $true
+            )
+          }
+          finally { $archive.Dispose() }
+          $godot = Join-Path $editor "Godot_v${release}_win64_console.exe"
+          if (-not (Test-Path $godot)) { throw 'Godot console executable is missing.' }
+          "GODOT_EXE=$godot" >> $env:GITHUB_ENV
+          & $godot --version
+          if ($LASTEXITCODE -ne 0) { throw 'Godot installation failed.' }
+
+      - name: Install Windows executable resource editor
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:RUNNER_TEMP 'windows-resource-tools'
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          $rcedit = Join-Path $tools 'rcedit.exe'
+          Invoke-WebRequest 'https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe' -OutFile $rcedit
+          $expected = '3E7801DB1A5EDBEC91B49A24A094AAD776CB4515488EA5A4CA2289C400EADE2A'
+          if ((Get-FileHash $rcedit -Algorithm SHA256).Hash -ine $expected) {
+            throw 'rcedit SHA256 checksum mismatch.'
+          }
+          $tools >> $env:GITHUB_PATH
+
+      - name: Import resources and test gameplay
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:GODOT_EXE --headless --path . --editor --import --quit
+          if ($LASTEXITCODE -ne 0) { throw 'Godot resource import failed.' }
+          foreach ($test in @('test_simulation.gd', 'test_app_replay.gd')) {
+            & $env:GODOT_EXE --headless --path . --script "res://godot/tests/$test"
+            if ($LASTEXITCODE -ne 0) { throw "Godot test failed: $test" }
+          }
+
+      - name: Export Windows release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $preset = Get-Content export_presets.cfg -Raw
+          $preset = $preset -replace 'application/file_version="[^"]*"', "application/file_version=`"$env:PACKAGE_VERSION`""
+          $preset = $preset -replace 'application/product_version="[^"]*"', "application/product_version=`"$env:PACKAGE_VERSION`""
+          Set-Content export_presets.cfg $preset -Encoding utf8
+          New-Item -ItemType Directory -Force -Path build\windows | Out-Null
+          & $env:GODOT_EXE --headless --path . --export-release 'Windows Store' 'build\windows\BlockBowl.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Godot Windows export failed.' }
+          foreach ($file in @('BlockBowl.exe', 'BlockBowl.pck')) {
+            if (-not (Test-Path "build\windows\$file") -or (Get-Item "build\windows\$file").Length -eq 0) {
+              throw "Export is missing $file."
+            }
+          }
+          # The title uses raw OBJ vertex colors; Godot exports imported OBJ files as meshes.
+          New-Item -ItemType Directory -Force -Path build\windows\App | Out-Null
+          Copy-Item App\BlockBowlLogo.obj build\windows\App\BlockBowlLogo.obj
+          $log = Join-Path $env:RUNNER_TEMP 'windows-export-smoke.log'
+          $game = Start-Process -FilePath (Resolve-Path build\windows\BlockBowl.exe).Path `
+            -WorkingDirectory $env:RUNNER_TEMP `
+            -ArgumentList @('--headless', '--quit-after', '120', '--log-file', "`"$log`"") `
+            -Wait -PassThru
+          if ($game.ExitCode -ne 0) { throw 'Exported game startup failed.' }
+          if (-not (Test-Path $log)) { throw 'Exported game did not produce a startup log.' }
+          Get-Content $log
+          if (Select-String -Path $log -Pattern 'SCRIPT ERROR:|ERROR:') {
+            throw 'Exported game reported errors. See startup log above.'
+          }
+
+      - name: Build Store package
+        run: |
+          .\WindowsStore\tools\build-msix.ps1 `
+            -PackageVersion $env:PACKAGE_VERSION `
+            -IdentityName $env:PACKAGE_NAME `
+            -Publisher $env:PACKAGE_PUBLISHER `
+            -PublisherDisplayName $env:PUBLISHER_DISPLAY_NAME
+          $package = Get-Item "build\store\BlockBowl_$($env:PACKAGE_VERSION)_x64.msix"
+          $evidence = @{
+            package = $package.Name
+            version = $env:PACKAGE_VERSION
+            identity_name = $env:PACKAGE_NAME
+            publisher = $env:PACKAGE_PUBLISHER
+            architecture = 'x64'
+            godot_version = $env:GODOT_VERSION
+            source_sha = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            sha256 = (Get-FileHash $package.FullName -Algorithm SHA256).Hash
+          }
+          $evidence | ConvertTo-Json | Set-Content build\store\release-evidence.json -Encoding utf8
+          @"
+          ## Windows Store package
+
+          - Package: ``$($package.Name)``
+          - Source: ``$env:GITHUB_SHA``
+          - SHA256: ``$($evidence.sha256)``
+
+          Download the artifact and upload the MSIX to Partner Center. This package is unsigned
+          for Store submission, not sideloading. Store certification and publication are separate.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload Store release
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-${{ inputs.package_version }}-x64-${{ github.run_id }}
+          path: |
+            build\store\*.msix
+            build\store\release-evidence.json
+          if-no-files-found: error
+          retention-days: 30
