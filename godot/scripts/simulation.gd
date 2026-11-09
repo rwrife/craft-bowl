@@ -710,7 +710,8 @@ func _step_health(p: Dictionary, exerting: bool, carrying: bool, cutting: bool) 
 
 func _resolve_collisions() -> void:
 	var reported = {}
-	for iteration in 32:
+	# ponytail: fixed cap for 18-player corner piles; profile before increasing roster size.
+	for iteration in 128:
 		var largest = 0.0
 		for a in players.size():
 			var pa: Dictionary = players[a]
