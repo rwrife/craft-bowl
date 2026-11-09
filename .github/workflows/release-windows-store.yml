@@ -41,10 +41,25 @@ jobs:
       - name: Validate Store configuration
         run: |
           $ErrorActionPreference = 'Stop'
+          $manifest = [System.Xml.XmlDocument]::new()
+          $manifest.Load((Join-Path $env:GITHUB_WORKSPACE 'WindowsStore\AppxManifest.xml'))
+          $identityDefaults = @{
+            PACKAGE_NAME = $manifest.Package.Identity.GetAttribute('Name')
+            PACKAGE_PUBLISHER = $manifest.Package.Identity.GetAttribute('Publisher')
+            PUBLISHER_DISPLAY_NAME = $manifest.Package.Properties['PublisherDisplayName'].InnerText
+          }
           foreach ($name in @('PACKAGE_NAME', 'PACKAGE_PUBLISHER', 'PUBLISHER_DISPLAY_NAME')) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Missing $name. Configure the WINDOWS_STORE_* repository variables documented in WindowsStore\README.md."
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              $value = $identityDefaults[$name]
             }
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              throw "Missing $name in both repository variables and WindowsStore\AppxManifest.xml."
+            }
+            if ($value.Contains("`r") -or $value.Contains("`n")) {
+              throw "$name must be a single-line Store identity value."
+            }
+            "$name=$value" >> $env:GITHUB_ENV
           }
           if ($env:PACKAGE_VERSION -cnotmatch '^[1-9][0-9]{0,4}\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.0$') {
             throw 'package_version must use X.Y.Z.0, with X at least 1 and each component at most 65535.'

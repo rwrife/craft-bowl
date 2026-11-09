@@ -3,10 +3,10 @@
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
          IgnorableNamespaces="uap rescap">
-  <Identity Name="" Publisher="" Version="" ProcessorArchitecture="x64" />
+  <Identity Name="Infinityball.BlockBowl" Publisher="CN=874CA4CF-90B8-4C53-AFBC-CCAC42030583" Version="" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>Block Bowl</DisplayName>
-    <PublisherDisplayName />
+    <PublisherDisplayName>Infinityball</PublisherDisplayName>
     <Description>Modern-retro, blocky American football.</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
