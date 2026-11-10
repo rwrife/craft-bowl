@@ -141,6 +141,7 @@ func _run() -> void:
 	_test_defense_and_kicks()
 	_test_defensive_mobility()
 	_test_corner_collisions()
+	_test_moving_corner_collisions()
 
 	_finish()
 
@@ -521,6 +522,33 @@ func _test_corner_collisions() -> void:
 		for b in range(a + 1, sim.players.size()):
 			worst = maxf(worst, Simulation.RADIUS * 2.0 - sim.players[a]["pos"].distance_to(sim.players[b]["pos"]))
 	check(worst <= 0.005, "18-player coincident corner pile separates within one tick (overlap %.6f)" % worst)
+
+
+func _test_moving_corner_collisions() -> void:
+	var sim = fresh()
+	var intents: Array = []
+	var corner = Vector2(-Simulation.HALF_WIDTH - 1.5 + Simulation.RADIUS, Simulation.RADIUS)
+	for i in sim.players.size():
+		var p: Dictionary = sim.players[i]
+		p["pos"] = corner + Vector2(float(i % 3) * 0.16, float(i / 3) * 0.12)
+		p["vel"] = Vector2.ZERO
+		p["down"] = false
+		p["dive_ticks"] = 0
+		intents.append({"move": Vector2(-1, -1)})
+	var moved = false
+	for frame in 30:
+		sim._step_players(intents)
+		var worst = 0.0
+		for a in sim.players.size():
+			var pa: Vector2 = sim.players[a]["pos"]
+			moved = moved or sim.players[a]["vel"].length() > 0.01
+			check(pa.x >= corner.x and pa.x <= Simulation.HALF_WIDTH + 1.5 - Simulation.RADIUS and
+				pa.y >= corner.y and pa.y <= 120.0 - Simulation.RADIUS,
+				"moving corner pile stays in field on tick %d" % frame)
+			for b in range(a + 1, sim.players.size()):
+				worst = maxf(worst, Simulation.RADIUS * 2.0 - pa.distance_to(sim.players[b]["pos"]))
+		check(worst <= 0.005, "moving 18-player corner pile separates on tick %d (overlap %.6f)" % [frame, worst])
+	check(moved, "packed players receive actual movement during corner collision test")
 
 
 func _finish() -> void:
