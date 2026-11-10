@@ -25,9 +25,31 @@ env:
 
 jobs:
   package:
-    name: Build x64 Store MSIX
-    runs-on: windows-2022
+    name: Build ${{ matrix.architecture }} Store MSIX
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: windows-2022
+            editor_platform: win64
+            template_architecture: x86_64
+            preset: Windows Store
+            export_directory: build\windows
+          - architecture: arm64
+            runner: windows-11-arm
+            editor_platform: windows_arm64
+            template_architecture: arm64
+            preset: Windows Store ARM64
+            export_directory: build\windows-arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      PACKAGE_ARCHITECTURE: ${{ matrix.architecture }}
+      GODOT_EDITOR_PLATFORM: ${{ matrix.editor_platform }}
+      GODOT_TEMPLATE_ARCHITECTURE: ${{ matrix.template_architecture }}
+      GODOT_EXPORT_PRESET: ${{ matrix.preset }}
+      EXPORT_DIRECTORY: ${{ matrix.export_directory }}
     defaults:
       run:
         shell: pwsh
@@ -68,6 +90,9 @@ jobs:
             if ([int]$part -gt 65535) { throw 'Package version components must not exceed 65535.' }
           }
 
+      - name: Test MSIX architecture handling
+        run: .\WindowsStore\tools\test-build-msix.ps1
+
       - name: Install Godot and matching Windows export template
         run: |
           $ErrorActionPreference = 'Stop'
@@ -79,7 +104,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $download, $editor, $templates | Out-Null
           Invoke-WebRequest "$baseUrl/SHA512-SUMS.txt" -OutFile (Join-Path $download 'SHA512-SUMS.txt')
           $checksums = Get-Content (Join-Path $download 'SHA512-SUMS.txt')
-          $editorArchive = "Godot_v${release}_win64.exe.zip"
+          $editorArchive = "Godot_v${release}_$env:GODOT_EDITOR_PLATFORM.exe.zip"
           $templateArchive = "Godot_v${release}_export_templates.tpz"
           foreach ($file in @($editorArchive, $templateArchive)) {
             $destination = Join-Path $download $file
@@ -95,14 +120,15 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::OpenRead((Join-Path $download $templateArchive))
           try {
-            $entry = $archive.GetEntry('templates/windows_release_x86_64.exe')
-            if ($null -eq $entry) { throw 'Windows x64 release template is missing.' }
+            $template = "windows_release_$env:GODOT_TEMPLATE_ARCHITECTURE.exe"
+            $entry = $archive.GetEntry("templates/$template")
+            if ($null -eq $entry) { throw "Windows release template is missing: $template" }
             [System.IO.Compression.ZipFileExtensions]::ExtractToFile(
-              $entry, (Join-Path $templates 'windows_release_x86_64.exe'), $true
+              $entry, (Join-Path $templates $template), $true
             )
           }
           finally { $archive.Dispose() }
-          $godot = Join-Path $editor "Godot_v${release}_win64_console.exe"
+          $godot = Join-Path $editor "Godot_v${release}_$($env:GODOT_EDITOR_PLATFORM)_console.exe"
           if (-not (Test-Path $godot)) { throw 'Godot console executable is missing.' }
           "GODOT_EXE=$godot" >> $env:GITHUB_ENV
           & $godot --version
@@ -138,19 +164,22 @@ jobs:
           $preset = $preset -replace 'application/file_version="[^"]*"', "application/file_version=`"$env:PACKAGE_VERSION`""
           $preset = $preset -replace 'application/product_version="[^"]*"', "application/product_version=`"$env:PACKAGE_VERSION`""
           Set-Content export_presets.cfg $preset -Encoding utf8
-          New-Item -ItemType Directory -Force -Path build\windows | Out-Null
-          & $env:GODOT_EXE --headless --path . --export-release 'Windows Store' 'build\windows\BlockBowl.exe'
+          New-Item -ItemType Directory -Force -Path $env:EXPORT_DIRECTORY | Out-Null
+          $executable = Join-Path $env:EXPORT_DIRECTORY 'BlockBowl.exe'
+          & $env:GODOT_EXE --headless --path . --export-release $env:GODOT_EXPORT_PRESET $executable
           if ($LASTEXITCODE -ne 0) { throw 'Godot Windows export failed.' }
           foreach ($file in @('BlockBowl.exe', 'BlockBowl.pck')) {
-            if (-not (Test-Path "build\windows\$file") -or (Get-Item "build\windows\$file").Length -eq 0) {
+            $path = Join-Path $env:EXPORT_DIRECTORY $file
+            if (-not (Test-Path $path) -or (Get-Item $path).Length -eq 0) {
               throw "Export is missing $file."
             }
           }
           # The title uses raw OBJ vertex colors; Godot exports imported OBJ files as meshes.
-          New-Item -ItemType Directory -Force -Path build\windows\App | Out-Null
-          Copy-Item App\BlockBowlLogo.obj build\windows\App\BlockBowlLogo.obj
+          $app = Join-Path $env:EXPORT_DIRECTORY 'App'
+          New-Item -ItemType Directory -Force -Path $app | Out-Null
+          Copy-Item App\BlockBowlLogo.obj (Join-Path $app 'BlockBowlLogo.obj')
           $log = Join-Path $env:RUNNER_TEMP 'windows-export-smoke.log'
-          $game = Start-Process -FilePath (Resolve-Path build\windows\BlockBowl.exe).Path `
+          $game = Start-Process -FilePath (Resolve-Path $executable).Path `
             -WorkingDirectory $env:RUNNER_TEMP `
             -ArgumentList @('--headless', '--quit-after', '120', '--log-file', "`"$log`"") `
             -Wait -PassThru
@@ -164,17 +193,18 @@ jobs:
       - name: Build Store package
         run: |
           .\WindowsStore\tools\build-msix.ps1 `
+            -Architecture $env:PACKAGE_ARCHITECTURE `
             -PackageVersion $env:PACKAGE_VERSION `
             -IdentityName $env:PACKAGE_NAME `
             -Publisher $env:PACKAGE_PUBLISHER `
             -PublisherDisplayName $env:PUBLISHER_DISPLAY_NAME
-          $package = Get-Item "build\store\BlockBowl_$($env:PACKAGE_VERSION)_x64.msix"
+          $package = Get-Item "build\store\BlockBowl_$($env:PACKAGE_VERSION)_$($env:PACKAGE_ARCHITECTURE).msix"
           $evidence = @{
             package = $package.Name
             version = $env:PACKAGE_VERSION
             identity_name = $env:PACKAGE_NAME
             publisher = $env:PACKAGE_PUBLISHER
-            architecture = 'x64'
+            architecture = $env:PACKAGE_ARCHITECTURE
             godot_version = $env:GODOT_VERSION
             source_sha = $env:GITHUB_SHA
             run_id = $env:GITHUB_RUN_ID
@@ -195,7 +225,7 @@ jobs:
       - name: Upload Store release
         uses: actions/upload-artifact@v4
         with:
-          name: windows-store-${{ inputs.package_version }}-x64-${{ github.run_id }}
+          name: windows-store-${{ inputs.package_version }}-${{ matrix.architecture }}-${{ github.run_id }}
           path: |
             build\store\*.msix
             build\store\release-evidence.json

@@ -28,10 +28,16 @@ The release packaging script generates the separate 44 x 44, 150 x 150, and
 ## Build a Microsoft Store release
 
 The **Release Windows Store** GitHub Actions workflow builds the portable Godot
-game, not the Swift/iOS app. It runs on `windows-2022` with Godot 4.4.1 and its
-matching x64 release template, verifies the download checksums, runs both gameplay
-tests, and smoke-tests the exported executable before packaging with the Windows SDK.
-It installs rcedit 2.0.0 for the executable's icon and version metadata. The raw
+game, not the Swift/iOS app. It builds separate x64 and ARM64 MSIX packages on
+`windows-2022` and `windows-11-arm`, respectively. Each job uses Godot 4.4.1 and its
+matching native editor and release template, verifies the download checksums, runs
+both gameplay tests, and smoke-tests the exported executable natively before
+packaging with the Windows SDK. Packaging checks the executable's PE architecture
+before setting the matching MSIX manifest architecture, so an x64 executable cannot
+accidentally be labeled ARM64 (or vice versa).
+Both jobs use the x64 Windows SDK utilities and rcedit 2.0.0 (under Windows 11's
+x64 emulation on the ARM64 runner) for packaging and executable icon/version metadata.
+The raw
 `App\BlockBowlLogo.obj` is shipped beside the PCK because the title screen reads its
 vertex colors directly, whereas Godot's normal OBJ export only ships an imported mesh.
 Exported Windows builds resolve that file relative to the executable, not the
@@ -61,12 +67,15 @@ reserves it. Increase the version for subsequent updates; reruns do not automati
 increment it. The workflow applies the selected version to both the MSIX identity
 and the executable's file/product metadata.
 
-Download the `windows-store-<version>-x64-<run-id>` artifact. It contains
-`BlockBowl_<version>_x64.msix` and `release-evidence.json` with the source commit
-and package SHA256. Upload the **MSIX**, not the artifact ZIP, to your Partner Center
-submission's **Packages** page. The artifact is retained for 30 days.
+Download both `windows-store-<version>-x64-<run-id>` and
+`windows-store-<version>-arm64-<run-id>` artifacts. Each contains
+`BlockBowl_<version>_<architecture>.msix` and `release-evidence.json` with the
+architecture, source commit, and package SHA256. Upload **both MSIX files**, not
+the artifact ZIPs, to the same Partner Center submission's **Packages** page.
+The Store selects the package matching the customer's device architecture.
+Artifacts are retained for 30 days.
 
-The package targets Windows 10 1809 or later on x64 and declares `runFullTrust`
+The packages target Windows 10 1809 or later on x64 or ARM64 and declare `runFullTrust`
 for the desktop game. Explain that capability if Partner Center requests it.
 Run the Windows App Certification Kit and test on real hardware before submitting;
 the workflow's smoke test does not replace certification or graphical testing.
@@ -80,7 +89,7 @@ requires separate certificate signing and trust setup. See Microsoft's
 
 ### Local packaging
 
-With Godot 4.4.1, the matching Windows x64 export template, rcedit configured in
+With Godot 4.4.1, the matching Windows export templates, rcedit configured in
 **Editor Settings > Export > Windows**, and a Windows 10/11 SDK installed, run
 from the repository root:
 
@@ -100,10 +109,38 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\WindowsStore\tools\bui
 ```
 
 Use the reserved Partner Center identity values shown above. Before rebuilding,
-remove only the generated `build\store\package` staging directory. The script refuses
+remove only the generated `build\store\package` (x64) or
+`build\store\package-arm64` (ARM64) staging directory. The script refuses
 to reuse it so stale files cannot accidentally enter a later package. Build outputs
 are git-ignored. The committed manifest is a template with the Store identity;
 the script populates its package version and generates its referenced assets.
+
+For ARM64, install the Windows ARM64 release template and use the separate preset
+and output directory. You can cross-export and package on x64 Windows, but run
+the resulting game on an ARM64 Windows device to smoke-test it:
+
+```powershell
+New-Item -ItemType Directory -Force -Path .\build\windows-arm64
+godot --headless --path . --export-release "Windows Store ARM64" ".\build\windows-arm64\BlockBowl.exe"
+New-Item -ItemType Directory -Force -Path .\build\windows-arm64\App
+Copy-Item .\App\BlockBowlLogo.obj .\build\windows-arm64\App\BlockBowlLogo.obj
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\WindowsStore\tools\build-msix.ps1 `
+    -Architecture arm64 `
+    -PackageVersion "1.0.0.0" `
+    -IdentityName "Infinityball.BlockBowl" `
+    -Publisher "CN=874CA4CF-90B8-4C53-AFBC-CCAC42030583" `
+    -PublisherDisplayName "Infinityball"
+```
+
+`-Architecture` defaults to `x64`, preserving the existing local command and
+output paths. ARM64 exports use `build\windows-arm64`; the packages are written to
+`build\store\BlockBowl_<version>_x64.msix` and
+`build\store\BlockBowl_<version>_arm64.msix`, with separate staging directories and
+resource-index configurations so both architectures can be packaged from one checkout.
+
+With the Windows SDK installed, run `.\WindowsStore\tools\test-build-msix.ps1` to
+check both package architectures, legacy x64 defaults, export isolation, and rejection
+of mismatched or invalid executable headers using temporary fixtures.
 
 ## Rebuild the artwork
 

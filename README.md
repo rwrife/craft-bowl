@@ -106,7 +106,7 @@ responsibility of the target platform.
 
 Microsoft Store artwork, listing descriptions, and Windows screenshots are in
 [`WindowsStore/`](WindowsStore/README.md), with scripts to rebuild the assets and recapture the game.
-The **Release Windows Store** workflow exports the Godot game as an x64 MSIX for
+The **Release Windows Store** workflow exports the Godot game as separate x64 and ARM64 MSIX packages for
 Partner Center; see that guide for the required repository identity variables and release steps.
 
 ## CI status
