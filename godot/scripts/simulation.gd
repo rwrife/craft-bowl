@@ -736,7 +736,15 @@ func _resolve_collisions() -> void:
 					var away: Vector2 = normal if pa["down"] else -normal
 					var bounds = Rect2(Vector2(-HALF_WIDTH - 1.5 + RADIUS, RADIUS),
 						Vector2(HALF_WIDTH * 2.0 + 3.0 - RADIUS * 2.0, 120.0 - RADIUS * 2.0))
-					if distance <= 0.0001 or not bounds.has_point(free + away * overlap):
+					var pushed = free + away * overlap
+					var obstructed = false
+					for c in players.size():
+						if c == a or c == b or not players[c]["down"]:
+							continue
+						if pushed.distance_to(players[c]["pos"]) < RADIUS * 2.0 - 0.005:
+							obstructed = true
+							break
+					if distance <= 0.0001 or not bounds.has_point(pushed) or obstructed:
 						# ponytail: choose unobstructed escape for pinned contacts; widen to full continuous solver if rosters expand.
 						var best = Vector2.INF
 						var best_overlap = INF

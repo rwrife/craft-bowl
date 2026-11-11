@@ -609,6 +609,12 @@ func _test_downed_player_collision() -> void:
 	var d1 = dual.players[2]["pos"].distance_to(dual.players[1]["pos"])
 	check(d0 >= Simulation.RADIUS * 2.0 - 0.005 and d1 >= Simulation.RADIUS * 2.0 - 0.005,
 		"standing player escapes sandwiched downed obstacles along boundary (d0=%.4f, d1=%.4f)" % [d0, d1])
+	dual.players[2]["pos"] = Vector2(corner.x + 0.1, 60.5)
+	dual._resolve_collisions()
+	d0 = dual.players[2]["pos"].distance_to(dual.players[0]["pos"])
+	d1 = dual.players[2]["pos"].distance_to(dual.players[1]["pos"])
+	check(d0 >= Simulation.RADIUS * 2.0 - 0.005 and d1 >= Simulation.RADIUS * 2.0 - 0.005,
+		"standing player escapes collinear downed obstacles along boundary (d0=%.4f, d1=%.4f)" % [d0, d1])
 
 
 func _finish() -> void:
