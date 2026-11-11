@@ -142,6 +142,7 @@ func _run() -> void:
 	_test_defensive_mobility()
 	_test_corner_collisions()
 	_test_moving_corner_collisions()
+	_test_downed_player_collision()
 
 	_finish()
 
@@ -469,6 +470,8 @@ func _test_defensive_mobility() -> void:
 		sim.setup_play(35, 1, 45)
 		for p in sim.players:
 			p["down"] = p["id"] != defender
+			if p["down"]:
+				p["pos"] = Vector2(20, 100)
 		sim.players[defender]["pos"] = Vector2(0, 40)
 	boosted.controlled = defender
 	baseline.controlled = -1
@@ -549,6 +552,63 @@ func _test_moving_corner_collisions() -> void:
 				worst = maxf(worst, Simulation.RADIUS * 2.0 - pa.distance_to(sim.players[b]["pos"]))
 		check(worst <= 0.005, "moving 18-player corner pile separates on tick %d (overlap %.6f)" % [frame, worst])
 	check(moved, "packed players receive actual movement during corner collision test")
+
+
+func _test_downed_player_collision() -> void:
+	var sim = fresh()
+	var standing = 0
+	var downed = 1
+	var corner = Vector2(-Simulation.HALF_WIDTH - 1.5 + Simulation.RADIUS, Simulation.RADIUS)
+	sim.players[downed]["pos"] = corner
+	sim.players[downed]["vel"] = Vector2.ZERO
+	sim.players[downed]["down"] = true
+	sim.players[standing]["pos"] = corner + Vector2(0.1, 0.0)
+	sim.players[standing]["vel"] = Vector2.ZERO
+	sim.players[standing]["down"] = false
+	var intents: Array = []
+	for unused in sim.players.size():
+		intents.append({})
+	intents[standing] = {"move": Vector2.LEFT}
+	for tick in 15:
+		sim._step_players(intents)
+		var p_down: Vector2 = sim.players[downed]["pos"]
+		var p_stand: Vector2 = sim.players[standing]["pos"]
+		var overlap = Simulation.RADIUS * 2.0 - p_stand.distance_to(p_down)
+		check(p_down == corner, "downed player stays pinned during collision on tick %d" % tick)
+		check(overlap <= 0.005, "standing player does not clip into downed corner player on tick %d (overlap %.6f)" % [tick, overlap])
+	# Both id orders and noncoincident edge contacts need a feasible escape.
+	for down_id in [0, 1]:
+		for offset in [0.0, 0.1]:
+			var exact = fresh()
+			var free_id = 1 - down_id
+			exact.players[down_id]["down"] = true
+			exact.players[down_id]["pos"] = Vector2(corner.x + offset, 60)
+			exact.players[free_id]["pos"] = Vector2(corner.x, 60)
+			exact._resolve_collisions()
+			check(exact.players[down_id]["pos"] == Vector2(corner.x + offset, 60),
+				"downed player %d at offset %.1f stays fixed" % [down_id, offset])
+			check(exact.players[free_id]["pos"].distance_to(exact.players[down_id]["pos"]) >= Simulation.RADIUS * 2.0 - 0.005,
+				"standing player escapes downed edge contact %d at offset %.1f" % [down_id, offset])
+		var diagonal = fresh()
+		var free_id = 1 - down_id
+		diagonal.players[down_id]["down"] = true
+		diagonal.players[down_id]["pos"] = corner + Vector2(0.5, 0.5)
+		diagonal.players[free_id]["pos"] = corner
+		diagonal._resolve_collisions()
+		check(diagonal.players[free_id]["pos"].distance_to(diagonal.players[down_id]["pos"]) >=
+			Simulation.RADIUS * 2.0 - 0.005, "standing player escapes diagonal corner contact %d" % down_id)
+	# Standing player between two downed players along a boundary must escape to the open side.
+	var dual = fresh()
+	dual.players[0]["down"] = true
+	dual.players[0]["pos"] = Vector2(corner.x + 0.1, 60.0)
+	dual.players[1]["down"] = true
+	dual.players[1]["pos"] = Vector2(corner.x + 0.1, 61.0)
+	dual.players[2]["pos"] = Vector2(corner.x, 60.0)
+	dual._resolve_collisions()
+	var d0 = dual.players[2]["pos"].distance_to(dual.players[0]["pos"])
+	var d1 = dual.players[2]["pos"].distance_to(dual.players[1]["pos"])
+	check(d0 >= Simulation.RADIUS * 2.0 - 0.005 and d1 >= Simulation.RADIUS * 2.0 - 0.005,
+		"standing player escapes sandwiched downed obstacles along boundary (d0=%.4f, d1=%.4f)" % [d0, d1])
 
 
 func _finish() -> void:

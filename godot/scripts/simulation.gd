@@ -715,11 +715,9 @@ func _resolve_collisions() -> void:
 		var largest = 0.0
 		for a in players.size():
 			var pa: Dictionary = players[a]
-			if pa["down"]:
-				continue
 			for b in range(a + 1, players.size()):
 				var pb: Dictionary = players[b]
-				if pb["down"]:
+				if pa["down"] and pb["down"]:
 					continue
 				var delta: Vector2 = pb["pos"] - pa["pos"]
 				var distance = delta.length()
@@ -732,10 +730,39 @@ func _resolve_collisions() -> void:
 					pa["engaged"] = 8
 					pb["engaged"] = 8
 				var normal = delta / distance if distance > 0.0001 else Vector2.from_angle(float((a * 7 + b * 13) % 24) * PI / 12.0)
+				if pa["down"] != pb["down"]:
+					var fixed: Vector2 = pa["pos"] if pa["down"] else pb["pos"]
+					var free: Vector2 = pb["pos"] if pa["down"] else pa["pos"]
+					var away: Vector2 = normal if pa["down"] else -normal
+					var bounds = Rect2(Vector2(-HALF_WIDTH - 1.5 + RADIUS, RADIUS),
+						Vector2(HALF_WIDTH * 2.0 + 3.0 - RADIUS * 2.0, 120.0 - RADIUS * 2.0))
+					if distance <= 0.0001 or not bounds.has_point(free + away * overlap):
+						# ponytail: choose unobstructed escape for pinned contacts; widen to full continuous solver if rosters expand.
+						var best = Vector2.INF
+						var best_overlap = INF
+						for axis in [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]:
+							var candidate: Vector2 = fixed + axis * (RADIUS * 2.0 + 0.0001)
+							if not bounds.has_point(candidate):
+								continue
+							var worst = 0.0
+							for c in players.size():
+								if c == (b if pa["down"] else a):
+									continue
+								worst = maxf(worst, RADIUS * 2.0 - candidate.distance_to(players[c]["pos"]))
+							if worst < best_overlap:
+								best_overlap = worst
+								best = candidate
+						if best != Vector2.INF:
+							(pb if pa["down"] else pa)["pos"] = best
+							continue
 				var power_a = float(pa["ratings"]["power"])
 				var power_b = float(pb["ratings"]["power"])
 				var weight = power_b / (power_a + power_b)
-				if pa["dive_ticks"] > 0 and pb["dive_ticks"] == 0:
+				if pa["down"]:
+					weight = 0.0
+				elif pb["down"]:
+					weight = 1.0
+				elif pa["dive_ticks"] > 0 and pb["dive_ticks"] == 0:
 					weight = 0.0
 				elif pb["dive_ticks"] > 0 and pa["dive_ticks"] == 0:
 					weight = 1.0
