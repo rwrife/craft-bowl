@@ -715,11 +715,9 @@ func _resolve_collisions() -> void:
 		var largest = 0.0
 		for a in players.size():
 			var pa: Dictionary = players[a]
-			if pa["down"]:
-				continue
 			for b in range(a + 1, players.size()):
 				var pb: Dictionary = players[b]
-				if pb["down"]:
+				if pa["down"] and pb["down"]:
 					continue
 				var delta: Vector2 = pb["pos"] - pa["pos"]
 				var distance = delta.length()
@@ -732,10 +730,56 @@ func _resolve_collisions() -> void:
 					pa["engaged"] = 8
 					pb["engaged"] = 8
 				var normal = delta / distance if distance > 0.0001 else Vector2.from_angle(float((a * 7 + b * 13) % 24) * PI / 12.0)
+				if pa["down"] != pb["down"]:
+					var fixed: Vector2 = pa["pos"] if pa["down"] else pb["pos"]
+					var free: Vector2 = pb["pos"] if pa["down"] else pa["pos"]
+					var away: Vector2 = normal if pa["down"] else -normal
+					var bounds = Rect2(Vector2(-HALF_WIDTH - 1.5 + RADIUS, RADIUS),
+						Vector2(HALF_WIDTH * 2.0 + 3.0 - RADIUS * 2.0, 120.0 - RADIUS * 2.0))
+					var pushed = free + away * overlap
+					var obstructed = false
+					for c in players.size():
+						if c == a or c == b or not players[c]["down"]:
+							continue
+						if pushed.distance_to(players[c]["pos"]) < RADIUS * 2.0 - 0.005:
+							obstructed = true
+							break
+					if distance <= 0.0001 or not bounds.has_point(pushed) or obstructed:
+						# ponytail: choose unobstructed escape for pinned contacts; widen to full continuous solver if rosters expand.
+						var best = Vector2.INF
+						var best_overlap = INF
+						var candidates: Array = []
+						# ponytail: bounded radial search for dense pinned piles; use continuous geometry if rosters exceed 18.
+						for ring in 4:
+							for spoke in 16:
+								candidates.append(free + Vector2.from_angle(float(spoke) * TAU / 16.0) *
+									(RADIUS * 2.0 * (ring + 1)))
+						for axis in [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]:
+							candidates.append(fixed + axis * (RADIUS * 2.0 + 0.0001))
+						for diag in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+							candidates.append(fixed + diag.normalized() * (RADIUS * 2.0 + 0.0001))
+						for candidate: Vector2 in candidates:
+							if not bounds.has_point(candidate):
+								continue
+							var worst = 0.0
+							for c in players.size():
+								if c == (b if pa["down"] else a):
+									continue
+								worst = maxf(worst, RADIUS * 2.0 - candidate.distance_to(players[c]["pos"]))
+							if worst < best_overlap:
+								best_overlap = worst
+								best = candidate
+						if best != Vector2.INF:
+							(pb if pa["down"] else pa)["pos"] = best
+							continue
 				var power_a = float(pa["ratings"]["power"])
 				var power_b = float(pb["ratings"]["power"])
 				var weight = power_b / (power_a + power_b)
-				if pa["dive_ticks"] > 0 and pb["dive_ticks"] == 0:
+				if pa["down"]:
+					weight = 0.0
+				elif pb["down"]:
+					weight = 1.0
+				elif pa["dive_ticks"] > 0 and pb["dive_ticks"] == 0:
 					weight = 0.0
 				elif pb["dive_ticks"] > 0 and pa["dive_ticks"] == 0:
 					weight = 1.0
