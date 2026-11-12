@@ -615,6 +615,33 @@ func _test_downed_player_collision() -> void:
 	d1 = dual.players[2]["pos"].distance_to(dual.players[1]["pos"])
 	check(d0 >= Simulation.RADIUS * 2.0 - 0.005 and d1 >= Simulation.RADIUS * 2.0 - 0.005,
 		"standing player escapes collinear downed obstacles along boundary (d0=%.4f, d1=%.4f)" % [d0, d1])
+	# A six-obstacle cluster with offset inner obstacles causes 8-direction escape to cycle.
+	for free_id in [0, 6]:
+		var cage = fresh()
+		var center = Vector2(corner.x + 2.0, 60)
+		for i in 7:
+			cage.players[i]["down"] = i != free_id
+		cage.players[free_id]["pos"] = center + Vector2(-0.7901, 0.1)
+		var rels = [
+			Vector2(0, -0.9), Vector2(-0.05, -0.1), Vector2(0.05, 0.1),
+			Vector2(0, 0.9), Vector2(1.63015, -0.1), Vector2(-1.63015, 0.1)
+		]
+		for k in 6:
+			var idx = (k + 1) if free_id == 0 else k
+			cage.players[idx]["pos"] = center + rels[k]
+		var cage_intents: Array = []
+		for i in cage.players.size():
+			cage_intents.append({})
+		cage_intents[free_id] = {"move": Vector2.LEFT}
+		for tick in 15:
+			cage._step_players(cage_intents)
+			for k in 6:
+				var idx = (k + 1) if free_id == 0 else k
+				var fixed_pos = center + rels[k]
+				check(cage.players[idx]["pos"] == fixed_pos, "downed cluster player %d stays fixed on tick %d" % [idx, tick])
+				var dist = cage.players[free_id]["pos"].distance_to(fixed_pos)
+				check(dist >= Simulation.RADIUS * 2.0 - 0.005,
+					"standing player avoids six downed cluster players (free %d, fixed %d, tick %d, overlap %.4f)" % [free_id, idx, tick, Simulation.RADIUS * 2.0 - dist])
 
 
 func _finish() -> void:

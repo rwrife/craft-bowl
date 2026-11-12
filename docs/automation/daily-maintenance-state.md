@@ -1,5 +1,11 @@
 # Daily maintenance state
 
+## 2026-11-12 run (PR repair checkpoint)
+
+- Timestamp: `2026-11-12T06:24:48Z`. GitHub preflight passed as `rwrife`; main `2eb84d5ae896cd4401ac351d82074fb9ecdacbe4`. Open PR snapshot: [#147](https://github.com/rwrife/craft-bowl/pull/147), DRAFT/CLEAN, mergeable, exact-head Windows [CI 42979584829](https://github.com/rwrife/craft-bowl/actions/runs/42979584829) SUCCESS. Open issue snapshot: 55 (#4–#23, #25–#59). Reused clean dedicated worktree `.worktrees/issue-25-downed-contact` and branch `fix/issue-25-downed-contact` for PR-first repair; no second issue selected.
+- Actions: initial eight-direction escape patch failed independent read-only review on tree `ce66e0413a75c06f8891d7dce94c53d939c28c4c`: its new wall test passed even without diagonals and solver still cycled on six offset obstacles. Replaced fixture with reviewer-provided six-obstacle cycle in both ID orders; native Godot RED repeated `0.0734`-yard overlap for 15 ticks. Added bounded free-position radial candidates before axis candidates; GREEN at exact working tree; removing radial candidates restored RED. Independent read-only Copilot review PASS on staged tree `be7ca3a21320536b16ee020ea52af3514b9e8407` (all three files, no blockers; reviewer could not execute tests). PR remains draft pending exact-head Windows CI; no merges yet.
+- Local verification: Godot 4.4.1 ARM64 editor import, simulation tests, and replay determinism (6008 ticks) all PASS after fix. No Windows packaged runtime, physical-device, signing, or publication evidence.
+
 ## 2026-11-11 run (selection checkpoint)
 
 - Timestamp: `2026-11-11T06:27:00Z`. GitHub preflight passed. Initial `origin/main` `2eb84d5ae896cd4401ac351d82074fb9ecdacbe4`; open PR snapshot: 0 (none reviewed, merged, or blocked). Open issue snapshot: 55 (#4–#23 and #25–#59). Main CI [42769937174](https://github.com/rwrife/craft-bowl/actions/runs/42769937174) SUCCESS at exact main head. Closure audit: #4/#5 require interactive evidence; #25 still lacks full non-overlap acceptance; #30 requires live debug-view evidence. No closure.

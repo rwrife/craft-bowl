@@ -748,8 +748,17 @@ func _resolve_collisions() -> void:
 						# ponytail: choose unobstructed escape for pinned contacts; widen to full continuous solver if rosters expand.
 						var best = Vector2.INF
 						var best_overlap = INF
+						var candidates: Array = []
+						# ponytail: bounded radial search for dense pinned piles; use continuous geometry if rosters exceed 18.
+						for ring in 4:
+							for spoke in 16:
+								candidates.append(free + Vector2.from_angle(float(spoke) * TAU / 16.0) *
+									(RADIUS * 2.0 * (ring + 1)))
 						for axis in [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]:
-							var candidate: Vector2 = fixed + axis * (RADIUS * 2.0 + 0.0001)
+							candidates.append(fixed + axis * (RADIUS * 2.0 + 0.0001))
+						for diag in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+							candidates.append(fixed + diag.normalized() * (RADIUS * 2.0 + 0.0001))
+						for candidate: Vector2 in candidates:
 							if not bounds.has_point(candidate):
 								continue
 							var worst = 0.0
